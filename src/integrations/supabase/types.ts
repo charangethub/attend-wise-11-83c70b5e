@@ -14,16 +14,278 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attendance: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          marked_by: string
+          remark: string | null
+          status: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          marked_by: string
+          remark?: string | null
+          status?: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          marked_by?: string
+          remark?: string | null
+          status?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      page_access: {
+        Row: {
+          has_access: boolean
+          id: string
+          page_name: string
+          user_id: string
+        }
+        Insert: {
+          has_access?: boolean
+          id?: string
+          page_name: string
+          user_id: string
+        }
+        Update: {
+          has_access?: boolean
+          id?: string
+          page_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      student_datasets: {
+        Row: {
+          created_at: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          sheet_url: string
+          slug: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          sheet_url?: string
+          slug: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          sheet_url?: string
+          slug?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          batch_type: string
+          center: string
+          classroom_id: string
+          classroom_name: string
+          created_at: string
+          curriculum: string
+          dataset: string
+          emergency_contact_1: string
+          emergency_contact_2: string
+          enrollment_date: string
+          enrollment_status: string
+          grade: string
+          id: string
+          mobile_number: string
+          order_id: string
+          roll_no: string
+          student_name: string
+          updated_at: string
+          user_id_vedantu: string
+          zone: string
+        }
+        Insert: {
+          batch_type?: string
+          center?: string
+          classroom_id?: string
+          classroom_name?: string
+          created_at?: string
+          curriculum?: string
+          dataset?: string
+          emergency_contact_1?: string
+          emergency_contact_2?: string
+          enrollment_date?: string
+          enrollment_status?: string
+          grade?: string
+          id?: string
+          mobile_number?: string
+          order_id?: string
+          roll_no?: string
+          student_name?: string
+          updated_at?: string
+          user_id_vedantu?: string
+          zone?: string
+        }
+        Update: {
+          batch_type?: string
+          center?: string
+          classroom_id?: string
+          classroom_name?: string
+          created_at?: string
+          curriculum?: string
+          dataset?: string
+          emergency_contact_1?: string
+          emergency_contact_2?: string
+          enrollment_date?: string
+          enrollment_status?: string
+          grade?: string
+          id?: string
+          mobile_number?: string
+          order_id?: string
+          roll_no?: string
+          student_name?: string
+          updated_at?: string
+          user_id_vedantu?: string
+          zone?: string
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          is_public: boolean
+          key: string
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          is_public?: boolean
+          key: string
+          updated_at?: string | null
+          value?: string
+        }
+        Update: {
+          is_public?: boolean
+          key?: string
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          admin_panel_access: boolean
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          admin_panel_access?: boolean
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          admin_panel_access?: boolean
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_status: {
+        Row: {
+          created_at: string
+          id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "owner" | "admin" | "teacher"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +412,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["owner", "admin", "teacher"],
+    },
   },
 } as const
