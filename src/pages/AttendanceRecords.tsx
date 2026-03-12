@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, BarChart3, Search } from "lucide-react";
+import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -19,11 +20,27 @@ const AttendanceRecords = () => {
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
+  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
+
   const daysInMonth = getDaysInMonth(new Date(year, month));
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  useEffect(() => { const fetchData = async () => { setLoading(true); const [stuRes, attRes] = await Promise.all([supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", ""), supabase.from("attendance").select("student_id, date, status").gte("date", monthStart).lte("date", monthEnd)]); setStudents(stuRes.data ?? []); setAttendance(attRes.data ?? []); setLoading(false); }; fetchData(); }, [monthStart, monthEnd]);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+      setLoading(true);
+      const [stuRes, attRes] = await Promise.all([
+        supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
+        supabase.from("attendance").select("student_id, date, status").gte("date", monthStart).lte("date", monthEnd)
+      ]);
+      setStudents(stuRes.data ?? []);
+      setAttendance(attRes.data ?? []);
+      setLoading(false);
+    };
+    fetchData();
+  }, [monthStart, monthEnd, activeSlug]); // ✅ FIX: re-fetch when dataset changes
+
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
   const attMap = useMemo(() => { const map: Record<string, Record<number, string>> = {}; attendance.forEach((a: any) => { if (!map[a.student_id]) map[a.student_id] = {}; const day = parseInt(a.date.split("-")[2]); map[a.student_id][day] = a.status; }); return map; }, [attendance]);
   const filteredStudents = useMemo(() => students.filter((s: any) => { if (enrollmentFilter !== "all" && s.enrollment_status !== enrollmentFilter) return false; if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false; if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; } return true; }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery]);

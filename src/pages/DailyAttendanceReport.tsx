@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, Printer } from "lucide-react";
@@ -11,8 +12,22 @@ const DailyAttendanceReport = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: settings } = useSystemSettings();
+  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
 
-  useEffect(() => { const fetchData = async () => { setLoading(true); const [stuRes, attRes] = await Promise.all([supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED"), supabase.from("attendance").select("student_id, status").eq("date", selectedDate)]); setStudents(stuRes.data ?? []); setAttendance(attRes.data ?? []); setLoading(false); }; fetchData(); }, [selectedDate]);
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+      setLoading(true);
+      const [stuRes, attRes] = await Promise.all([
+        supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
+        supabase.from("attendance").select("student_id, status").eq("date", selectedDate)
+      ]);
+      setStudents(stuRes.data ?? []);
+      setAttendance(attRes.data ?? []);
+      setLoading(false);
+    };
+    fetchData();
+  }, [selectedDate, activeSlug]); // ✅ FIX: re-fetch when dataset changes
 
   const dynamicCenter = useMemo(() => { if (settings?.center_name) return settings.center_name; const first = students.find((s: any) => s.center); return first?.center || "Adilabad"; }, [students, settings?.center_name]);
 
