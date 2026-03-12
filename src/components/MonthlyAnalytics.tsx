@@ -4,6 +4,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, subMonths, addMont
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Users } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from "recharts";
+import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
 
 const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)" };
 
@@ -12,23 +13,25 @@ const MonthlyAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
 
   const monthStart = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!activeSlug) return; // ✅ FIX: wait for slug to load
       setLoading(true);
       const [attRes, stuRes] = await Promise.all([
         supabase.from("attendance").select("student_id, status, date").gte("date", monthStart).lte("date", monthEnd),
-        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED"),
+        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
       ]);
       setAttendance(attRes.data ?? []);
       setStudents(stuRes.data ?? []);
       setLoading(false);
     };
     fetchData();
-  }, [monthStart, monthEnd]);
+  }, [monthStart, monthEnd, activeSlug]); // ✅ FIX: re-fetch when dataset changes
 
   const dailyTrend = useMemo(() => {
     const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });

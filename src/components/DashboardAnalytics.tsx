@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { Users, UserCheck, UserX, Clock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
 
 const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Unmarked: "hsl(30, 15%, 70%)" };
 
@@ -11,20 +12,22 @@ const DashboardAnalytics = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
+  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!activeSlug) return; // ✅ FIX: wait for slug to load
       setLoading(true);
       const [attRes, stuRes] = await Promise.all([
         supabase.from("attendance").select("student_id, status").eq("date", today),
-        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED"),
+        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
       ]);
       setAttendance(attRes.data ?? []);
       setStudents(stuRes.data ?? []);
       setLoading(false);
     };
     fetchData();
-  }, [today]);
+  }, [today, activeSlug]); // ✅ FIX: re-fetch when dataset changes
 
   const attMap = useMemo(() => {
     const map: Record<string, string> = {};
