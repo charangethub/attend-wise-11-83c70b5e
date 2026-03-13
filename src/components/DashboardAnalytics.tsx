@@ -36,6 +36,8 @@ const DashboardAnalytics = () => {
   }, [attendance]);
 
   const totalStudents = students.length;
+  const enrolledCount = students.filter((s) => s.enrollment_status === "ENROLLED").length;
+  const forfeitedCount = students.filter((s) => s.enrollment_status === "FORFEITED").length;
   const presentCount = students.filter((s) => attMap[s.id] === "P").length;
   const absentCount = students.filter((s) => attMap[s.id] === "AB").length;
   const leaveCount = students.filter((s) => attMap[s.id] === "L").length;
