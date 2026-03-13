@@ -90,7 +90,7 @@ const DashboardAnalytics = () => {
         <h3 className="text-lg font-bold text-foreground">Today's Snapshot — {format(new Date(), "dd MMM yyyy")}</h3>
         {unmarkedCount > 0 && <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">{unmarkedCount} unmarked</span>}
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (
           <div key={card.label} className="rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md">
             <div className="flex items-center gap-3">
