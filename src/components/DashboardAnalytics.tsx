@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import { Users, UserCheck, UserX, Clock } from "lucide-react";
+import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
 import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
 
@@ -20,7 +20,7 @@ const DashboardAnalytics = () => {
       setLoading(true);
       const [attRes, stuRes] = await Promise.all([
         supabase.from("attendance").select("student_id, status").eq("date", today),
-        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
+        supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
       ]);
       setAttendance(attRes.data ?? []);
       setStudents(stuRes.data ?? []);
@@ -36,6 +36,8 @@ const DashboardAnalytics = () => {
   }, [attendance]);
 
   const totalStudents = students.length;
+  const enrolledCount = students.filter((s) => s.enrollment_status === "ENROLLED").length;
+  const forfeitedCount = students.filter((s) => s.enrollment_status === "FORFEITED").length;
   const presentCount = students.filter((s) => attMap[s.id] === "P").length;
   const absentCount = students.filter((s) => attMap[s.id] === "AB").length;
   const leaveCount = students.filter((s) => attMap[s.id] === "L").length;
@@ -73,6 +75,8 @@ const DashboardAnalytics = () => {
 
   const summaryCards = [
     { label: "Total Students", value: totalStudents, icon: Users, color: "bg-primary/10 text-primary" },
+    { label: "Total Enrollment", value: enrolledCount, icon: UserPlus, color: "bg-accent/10 text-accent-foreground" },
+    { label: "Forfeited", value: forfeitedCount, icon: UserMinus, color: "bg-muted text-muted-foreground" },
     { label: "Present", value: `${presentCount} (${presentPct}%)`, icon: UserCheck, color: "bg-success/10 text-success" },
     { label: "Absent", value: `${absentCount} (${absentPct}%)`, icon: UserX, color: "bg-destructive/10 text-destructive" },
     { label: "On Leave", value: `${leaveCount} (${leavePct}%)`, icon: Clock, color: "bg-warning/10 text-warning" },
@@ -86,7 +90,7 @@ const DashboardAnalytics = () => {
         <h3 className="text-lg font-bold text-foreground">Today's Snapshot — {format(new Date(), "dd MMM yyyy")}</h3>
         {unmarkedCount > 0 && <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning">{unmarkedCount} unmarked</span>}
       </div>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         {summaryCards.map((card) => (
           <div key={card.label} className="rounded-xl border border-border bg-card p-4 transition-shadow hover:shadow-md">
             <div className="flex items-center gap-3">
