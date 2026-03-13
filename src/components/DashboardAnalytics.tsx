@@ -20,7 +20,7 @@ const DashboardAnalytics = () => {
       setLoading(true);
       const [attRes, stuRes] = await Promise.all([
         supabase.from("attendance").select("student_id, status").eq("date", today),
-        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
+        supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
       ]);
       setAttendance(attRes.data ?? []);
       setStudents(stuRes.data ?? []);
