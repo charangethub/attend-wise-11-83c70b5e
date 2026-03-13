@@ -75,6 +75,8 @@ const DashboardAnalytics = () => {
 
   const summaryCards = [
     { label: "Total Students", value: totalStudents, icon: Users, color: "bg-primary/10 text-primary" },
+    { label: "Total Enrollment", value: enrolledCount, icon: UserPlus, color: "bg-accent/10 text-accent-foreground" },
+    { label: "Forfeited", value: forfeitedCount, icon: UserMinus, color: "bg-muted text-muted-foreground" },
     { label: "Present", value: `${presentCount} (${presentPct}%)`, icon: UserCheck, color: "bg-success/10 text-success" },
     { label: "Absent", value: `${absentCount} (${absentPct}%)`, icon: UserX, color: "bg-destructive/10 text-destructive" },
     { label: "On Leave", value: `${leaveCount} (${leavePct}%)`, icon: Clock, color: "bg-warning/10 text-warning" },
