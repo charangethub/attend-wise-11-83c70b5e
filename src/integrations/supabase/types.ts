@@ -21,6 +21,7 @@ export type Database = {
           id: string
           marked_by: string
           remark: string | null
+          session: string
           status: string
           student_id: string
           updated_at: string
@@ -31,6 +32,7 @@ export type Database = {
           id?: string
           marked_by: string
           remark?: string | null
+          session?: string
           status?: string
           student_id: string
           updated_at?: string
@@ -41,6 +43,7 @@ export type Database = {
           id?: string
           marked_by?: string
           remark?: string | null
+          session?: string
           status?: string
           student_id?: string
           updated_at?: string
