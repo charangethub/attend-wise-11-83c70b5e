@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
     const rows = parseCSV(csvText);
     if (rows.length < 2) return new Response(JSON.stringify({ success: false, error: `Sheet empty — ${rows.length} row(s).` }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const headers = rows[0].map(h => h.toLowerCase().replace(/[.\s\n\r\(\)\/]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''));
+    const headers = rows[0].map(h => h.toLowerCase().replace(/[.\s\n\r\(\)\/\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''));
 
     const rollNoIdx = findColumnIndex(headers, ['roll_no', 'roll_number', 'rollno', 'roll', 's_no', 'sno', 'sr_no', 'id']);
     const studentNameIdx = findColumnIndex(headers, ['student_name', 'full_name', 'name', 'sname', 'candidate_name', 'student']);
