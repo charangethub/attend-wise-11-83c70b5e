@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
-import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
+import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, Printer } from "lucide-react";
+import { getCombinedStatus } from "@/lib/attendanceSession";
 
 const DailyAttendanceReport = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -12,31 +13,60 @@ const DailyAttendanceReport = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { data: settings } = useSystemSettings();
-  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
+  const { activeSlug } = useActiveDataset();
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+      if (!activeSlug) return;
       setLoading(true);
       const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
-        supabase.from("attendance").select("student_id, status").eq("date", selectedDate)
+        supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
+        supabase.from("attendance").select("student_id, status, session").eq("date", selectedDate)
       ]);
       setStudents(stuRes.data ?? []);
       setAttendance(attRes.data ?? []);
       setLoading(false);
     };
     fetchData();
-  }, [selectedDate, activeSlug]); // ✅ FIX: re-fetch when dataset changes
+  }, [selectedDate, activeSlug]);
 
   const dynamicCenter = useMemo(() => { if (settings?.center_name) return settings.center_name; const first = students.find((s: any) => s.center); return first?.center || "Adilabad"; }, [students, settings?.center_name]);
 
   const reportData = useMemo(() => {
-    const classMap: Record<string, { strength: number; present: number; absent: number; leave: number }> = {};
-    students.forEach((s) => { const name = s.classroom_name || "Unknown"; if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0 }; classMap[name].strength++; });
-    attendance.forEach((a) => { const stu = students.find((s: any) => s.id === a.student_id); const name = stu?.classroom_name || "Unknown"; if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0 }; if (a.status === "P") classMap[name].present++; else if (a.status === "AB") classMap[name].absent++; else if (a.status === "L") classMap[name].leave++; });
-    const rows = Object.entries(classMap).map(([name, d]) => ({ batch: name, strength: d.strength, present: d.present, absent: d.absent + d.leave, pct: d.strength > 0 ? (d.present / d.strength) * 100 : 0 })).sort((a, b) => a.batch.localeCompare(b.batch));
-    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent }), { strength: 0, present: 0, absent: 0 });
+    // Build per-student combined status from AM/PM
+    const studentSessions: Record<string, { AM?: string; PM?: string }> = {};
+    attendance.forEach((a: any) => {
+      if (!studentSessions[a.student_id]) studentSessions[a.student_id] = {};
+      const session = a.session || "AM";
+      if (session === "AM") studentSessions[a.student_id].AM = a.status;
+      else studentSessions[a.student_id].PM = a.status;
+    });
+
+    const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number }> = {};
+    students.forEach((s) => {
+      const name = s.classroom_name || "Unknown";
+      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0 };
+      classMap[name].strength++;
+
+      const sessions = studentSessions[s.id];
+      if (sessions) {
+        const combined = getCombinedStatus(sessions.AM, sessions.PM);
+        if (combined === "P") classMap[name].present++;
+        else if (combined === "AB") classMap[name].absent++;
+        else if (combined === "L") classMap[name].leave++;
+        else classMap[name].half++; // P:A, P:L, A:P etc.
+      }
+    });
+
+    const rows = Object.entries(classMap).map(([name, d]) => ({
+      batch: name,
+      strength: d.strength,
+      present: d.present,
+      absent: d.absent + d.leave,
+      half: d.half,
+      pct: d.strength > 0 ? (d.present / d.strength) * 100 : 0,
+    })).sort((a, b) => a.batch.localeCompare(b.batch));
+    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half }), { strength: 0, present: 0, absent: 0, half: 0 });
     return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 } };
   }, [students, attendance]);
 
@@ -62,10 +92,24 @@ const DailyAttendanceReport = () => {
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
-          <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
-            <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={5} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
-              <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}><td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td><td className="border-2 border-foreground px-4 py-2 text-center text-foreground">{row.strength}</td><td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-success">{row.present}</td><td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-destructive">{row.absent}</td><td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-foreground">{row.pct.toFixed(2)}%</td></tr>))}</tbody>
-            {reportData.rows.length > 0 && <tfoot><tr className="bg-primary/10 font-bold"><td className="border-2 border-foreground px-4 py-2.5 text-center text-sm uppercase text-primary">Total</td><td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.strength}</td><td className="border-2 border-foreground px-4 py-2.5 text-center text-success">{reportData.totals.present}</td><td className="border-2 border-foreground px-4 py-2.5 text-center text-destructive">{reportData.totals.absent}</td><td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.pct.toFixed(2)}%</td></tr></tfoot>}
+          <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
+            <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={6} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
+              <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
+                <td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td>
+                <td className="border-2 border-foreground px-4 py-2 text-center text-foreground">{row.strength}</td>
+                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-success">{row.present}</td>
+                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-destructive">{row.absent}</td>
+                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-orange-600">{row.half}</td>
+                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-foreground">{row.pct.toFixed(2)}%</td>
+              </tr>))}</tbody>
+            {reportData.rows.length > 0 && <tfoot><tr className="bg-primary/10 font-bold">
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-sm uppercase text-primary">Total</td>
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.strength}</td>
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-success">{reportData.totals.present}</td>
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-destructive">{reportData.totals.absent}</td>
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-orange-600">{reportData.totals.half}</td>
+              <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.pct.toFixed(2)}%</td>
+            </tr></tfoot>}
           </table>
         </div>
       )}

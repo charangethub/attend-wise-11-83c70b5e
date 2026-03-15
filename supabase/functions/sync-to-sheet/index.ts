@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     if (activeSlug) studentsQuery = studentsQuery.eq('dataset', activeSlug);
     const { data: studentsData } = await studentsQuery;
 
-    // ✅ FIX 3: Include mobile_number in the attendance join
+    // ✅ FIX 3: Include mobile_number and session in the attendance join
     const { data: attData } = await supabase
       .from('attendance')
       .select('*, students(roll_no, student_name, classroom_name, curriculum, grade, center, mobile_number, emergency_contact_1, emergency_contact_2)')
