@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, BarChart3, Search } from "lucide-react";
-import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
+import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { getCombinedStatus, getCombinedStatusColor } from "@/lib/attendanceSession";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -20,7 +22,7 @@ const AttendanceRecords = () => {
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
-  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
+  const { activeSlug } = useActiveDataset();
 
   const daysInMonth = getDaysInMonth(new Date(year, month));
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -28,26 +30,81 @@ const AttendanceRecords = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+      if (!activeSlug) return;
       setLoading(true);
       const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
-        supabase.from("attendance").select("student_id, date, status").gte("date", monthStart).lte("date", monthEnd)
+        supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+        supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
       ]);
       setStudents(stuRes.data ?? []);
       setAttendance(attRes.data ?? []);
       setLoading(false);
     };
     fetchData();
-  }, [monthStart, monthEnd, activeSlug]); // ✅ FIX: re-fetch when dataset changes
+  }, [monthStart, monthEnd, activeSlug]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
-  const attMap = useMemo(() => { const map: Record<string, Record<number, string>> = {}; attendance.forEach((a: any) => { if (!map[a.student_id]) map[a.student_id] = {}; const day = parseInt(a.date.split("-")[2]); map[a.student_id][day] = a.status; }); return map; }, [attendance]);
-  const filteredStudents = useMemo(() => students.filter((s: any) => { if (enrollmentFilter !== "all" && s.enrollment_status !== enrollmentFilter) return false; if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false; if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; } return true; }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery]);
-  const getStudentSummary = (studentId: string) => { const days = attMap[studentId] || {}; let p = 0, ab = 0, l = 0, h = 0; Object.values(days).forEach((s) => { if (s === "P") p++; else if (s === "AB") ab++; else if (s === "L") l++; else if (s === "H") h++; }); const total = p + ab + l + h; return { p, ab, l, h, total, pct: total > 0 ? Math.round((p / total) * 100) : 0 }; };
-  const statusColor = (status: string) => { switch (status) { case "P": return "bg-success/20 text-success"; case "AB": return "bg-destructive/20 text-destructive"; case "L": return "bg-warning/20 text-warning"; case "H": return "bg-purple-200 text-purple-700"; default: return ""; } };
-  const statusBadgeColor = (status: string) => { switch (status) { case "ENROLLED": return "bg-success/10 text-success"; case "FORFEITED": return "bg-destructive/10 text-destructive"; default: return "bg-muted text-muted-foreground"; } };
-  const exportCSV = () => { const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, "0")); const headers = ["Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Status", ...dayHeaders, "P", "AB", "L", "H", "Total", "%"]; const rows = filteredStudents.map((s: any) => { const days = attMap[s.id] || {}; const sum = getStudentSummary(s.id); return [s.roll_no, s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status, ...dayHeaders.map((_, i) => days[i + 1] || ""), sum.p, sum.ab, sum.l, sum.h, sum.total, sum.pct]; }); const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n"); const blob = new Blob([csv], { type: "text/csv" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `attendance-${months[month]}-${year}.csv`; a.click(); URL.revokeObjectURL(url); };
+
+  // Build a map: studentId -> day -> { AM?: status, PM?: status, amRemark?, pmRemark? }
+  const attMap = useMemo(() => {
+    const map: Record<string, Record<number, { AM?: string; PM?: string; amRemark?: string; pmRemark?: string }>> = {};
+    attendance.forEach((a: any) => {
+      if (!map[a.student_id]) map[a.student_id] = {};
+      const day = parseInt(a.date.split("-")[2]);
+      if (!map[a.student_id][day]) map[a.student_id][day] = {};
+      const session = a.session || "AM";
+      if (session === "AM") {
+        map[a.student_id][day].AM = a.status;
+        map[a.student_id][day].amRemark = a.remark;
+      } else {
+        map[a.student_id][day].PM = a.status;
+        map[a.student_id][day].pmRemark = a.remark;
+      }
+    });
+    return map;
+  }, [attendance]);
+
+  const filteredStudents = useMemo(() => students.filter((s: any) => {
+    if (enrollmentFilter !== "all" && s.enrollment_status !== enrollmentFilter) return false;
+    if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false;
+    if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
+    return true;
+  }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery]);
+
+  const getStudentSummary = (studentId: string) => {
+    const days = attMap[studentId] || {};
+    let p = 0, ab = 0, l = 0, h = 0, half = 0;
+    Object.values(days).forEach((d) => {
+      const combined = getCombinedStatus(d.AM, d.PM);
+      if (combined === "P") p++;
+      else if (combined === "AB") ab++;
+      else if (combined === "L") l++;
+      else if (combined === "H") h++;
+      else half++; // P:A, P:L, A:P etc.
+    });
+    const total = p + ab + l + h + half;
+    return { p, ab, l, h, half, total, pct: total > 0 ? Math.round((p / total) * 100) : 0 };
+  };
+
+  const statusBadgeColor = (status: string) => {
+    switch (status) { case "ENROLLED": return "bg-success/10 text-success"; case "FORFEITED": return "bg-destructive/10 text-destructive"; default: return "bg-muted text-muted-foreground"; }
+  };
+
+  const exportCSV = () => {
+    const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, "0"));
+    const headers = ["Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
+    const rows = filteredStudents.map((s: any) => {
+      const days = attMap[s.id] || {};
+      const sum = getStudentSummary(s.id);
+      return [s.roll_no, s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
+        ...dayHeaders.map((_, i) => { const d = days[i + 1]; return d ? getCombinedStatus(d.AM, d.PM) : ""; }),
+        sum.p, sum.ab, sum.l, sum.h, sum.half, sum.total, sum.pct];
+    });
+    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `attendance-${months[month]}-${year}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -59,14 +116,53 @@ const AttendanceRecords = () => {
         <Select value={enrollmentFilter} onValueChange={setEnrollmentFilter}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Enrollment</SelectItem><SelectItem value="ENROLLED">ENROLLED</SelectItem><SelectItem value="FORFEITED">FORFEITED</SelectItem></SelectContent></Select>
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
+
+      {/* Legend */}
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+        <span className="font-medium text-muted-foreground">Legend:</span>
+        <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Full Day Present</span>
+        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">AB = Full Day Absent</span>
+        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave</span>
+        <span className="rounded px-2 py-0.5 bg-orange-200 text-orange-700 font-bold">P:A = Present AM, Absent PM</span>
+        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">P:L = Present AM, Leave PM</span>
+      </div>
+
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
-        <div className="rounded-lg border border-border overflow-auto">
-          <table className="text-xs w-max min-w-full"><thead><tr className="bg-muted/50"><th className="sticky left-0 z-10 bg-muted/50 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th><th className="sticky left-[80px] z-10 bg-muted/50 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th><th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th><th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th><th className="px-2 py-2 text-left font-semibold min-w-[140px]">Classroom</th><th className="px-2 py-2 text-center font-semibold min-w-[70px]">Status</th>{Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="px-1.5 py-2 text-center font-semibold min-w-[28px]">{String(i + 1).padStart(2, "0")}</th>)}</tr></thead>
-            <tbody>{filteredStudents.map((s: any, idx: number) => { const days = attMap[s.id] || {}; return (
-              <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}><td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td><td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td><td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td><td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td><td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px]">{s.classroom_name}</td><td className="px-2 py-1.5 text-center"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
-                {Array.from({ length: daysInMonth }, (_, i) => { const status = days[i + 1]; return <td key={i} className={`px-1 py-1.5 text-center font-semibold ${status ? statusColor(status) : ""}`}>{status || <span className="text-muted-foreground/30">-</span>}</td>; })}
-              </tr>); })}</tbody></table>
-        </div>
+        <TooltipProvider>
+          <div className="rounded-lg border border-border overflow-auto">
+            <table className="text-xs w-max min-w-full"><thead><tr className="bg-muted/50"><th className="sticky left-0 z-10 bg-muted/50 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th><th className="sticky left-[80px] z-10 bg-muted/50 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th><th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th><th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th><th className="px-2 py-2 text-left font-semibold min-w-[140px]">Classroom</th><th className="px-2 py-2 text-center font-semibold min-w-[70px]">Status</th>{Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="px-1.5 py-2 text-center font-semibold min-w-[32px]">{String(i + 1).padStart(2, "0")}</th>)}</tr></thead>
+              <tbody>{filteredStudents.map((s: any, idx: number) => {
+                const days = attMap[s.id] || {};
+                return (
+                  <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+                    <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
+                    <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
+                    <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px]">{s.classroom_name}</td>
+                    <td className="px-2 py-1.5 text-center"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
+                    {Array.from({ length: daysInMonth }, (_, i) => {
+                      const d = days[i + 1];
+                      const combined = d ? getCombinedStatus(d.AM, d.PM) : "";
+                      const remarkText = d?.amRemark || d?.pmRemark ? `AM: ${d.amRemark || "—"}\nPM: ${d.pmRemark || "—"}` : "";
+                      return (
+                        <td key={i} className={`px-1 py-1.5 text-center font-semibold ${combined ? getCombinedStatusColor(combined) : ""}`}>
+                          {combined ? (
+                            remarkText ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild><span className="cursor-help underline decoration-dotted">{combined}</span></TooltipTrigger>
+                                <TooltipContent className="max-w-[200px] whitespace-pre-line text-xs">{remarkText}</TooltipContent>
+                              </Tooltip>
+                            ) : combined
+                          ) : <span className="text-muted-foreground/30">-</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}</tbody></table>
+          </div>
+        </TooltipProvider>
       )}
     </div>
   );

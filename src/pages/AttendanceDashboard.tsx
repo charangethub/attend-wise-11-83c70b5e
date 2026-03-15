@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 
@@ -19,9 +19,12 @@ const AttendanceDashboard = () => {
   const { activeSlug, activeName } = useActiveDataset();
   const today = format(new Date(), "yyyy-MM-dd");
   const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedSession, setSelectedSession] = useState<"AM" | "PM">("AM");
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [originalAttendance, setOriginalAttendance] = useState<Record<string, string>>({});
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [originalRemarks, setOriginalRemarks] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -40,17 +43,20 @@ const AttendanceDashboard = () => {
       setLoading(true);
       const [stuRes, attRes] = await Promise.all([
         supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
-        supabase.from("attendance").select("student_id, status").eq("date", selectedDate),
+        supabase.from("attendance").select("student_id, status, remark, session").eq("date", selectedDate).eq("session", selectedSession),
       ]);
       setStudents(stuRes.data ?? []);
       const map: Record<string, string> = {};
-      (attRes.data ?? []).forEach((a: any) => { map[a.student_id] = a.status; });
+      const rMap: Record<string, string> = {};
+      (attRes.data ?? []).forEach((a: any) => { map[a.student_id] = a.status; rMap[a.student_id] = a.remark || ""; });
       setAttendance(map);
       setOriginalAttendance(map);
+      setRemarks(rMap);
+      setOriginalRemarks(rMap);
       setLoading(false);
     };
     fetchData();
-  }, [selectedDate, activeSlug]);
+  }, [selectedDate, activeSlug, selectedSession]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
   const filteredStudents = useMemo(() => students.filter((s) => {
@@ -61,7 +67,7 @@ const AttendanceDashboard = () => {
     return true;
   }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance]);
 
-  const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance);
+  const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance) || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
   const pct = filteredStudents.length > 0 ? Math.round((markedCount / filteredStudents.length) * 100) : 0;
   const pCount = filteredStudents.filter((s) => attendance[s.id] === "P").length;
@@ -72,12 +78,21 @@ const AttendanceDashboard = () => {
     if (!user) return;
     setSaving(true);
     try {
-      const toUpsert = Object.entries(attendance).filter(([, status]) => status).map(([student_id, status]) => ({ student_id, date: selectedDate, status, marked_by: user.id }));
+      const toUpsert = Object.entries(attendance).filter(([, status]) => status).map(([student_id, status]) => ({
+        student_id, date: selectedDate, status, marked_by: user.id, session: selectedSession,
+        remark: remarks[student_id] || "",
+      }));
       const toDelete = Object.keys(originalAttendance).filter((sid) => !attendance[sid]);
-      if (toUpsert.length > 0) { const { error } = await supabase.from("attendance").upsert(toUpsert, { onConflict: "student_id,date" }); if (error) throw error; }
-      if (toDelete.length > 0) { for (const sid of toDelete) { await supabase.from("attendance").delete().eq("student_id", sid).eq("date", selectedDate); } }
+      if (toUpsert.length > 0) {
+        const { error } = await supabase.from("attendance").upsert(toUpsert, { onConflict: "student_id,date,session" });
+        if (error) throw error;
+      }
+      if (toDelete.length > 0) {
+        for (const sid of toDelete) { await supabase.from("attendance").delete().eq("student_id", sid).eq("date", selectedDate).eq("session", selectedSession); }
+      }
       setOriginalAttendance({ ...attendance });
-      toast.success("Attendance saved!");
+      setOriginalRemarks({ ...remarks });
+      toast.success(`${selectedSession} Attendance saved!`);
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
     } catch (err: any) { toast.error("Save failed: " + (err.message || "Unknown error")); }
     setSaving(false);
@@ -95,8 +110,17 @@ const AttendanceDashboard = () => {
     setSyncing(false);
   };
 
+  const toggleStatus = (studentId: string, status: string) => {
+    if (!canEdit) return;
+    setAttendance((prev) => {
+      const current = prev[studentId];
+      if (current === status) { const { [studentId]: _, ...rest } = prev; return rest; }
+      return { ...prev, [studentId]: status };
+    });
+  };
+
   const statusBtn = (studentId: string, status: string, label: string, color: string) => (
-    <button disabled={!canEdit} onClick={() => { setAttendance((prev) => { const current = prev[studentId]; if (current === status) { const { [studentId]: _, ...rest } = prev; return rest; } return { ...prev, [studentId]: status }; }); }}
+    <button disabled={!canEdit} onClick={() => toggleStatus(studentId, status)}
       className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all ${attendance[studentId] === status ? color : "bg-muted text-muted-foreground hover:bg-muted/80"} ${!canEdit ? "opacity-50 cursor-not-allowed" : ""}`}>{label}</button>
   );
 
@@ -110,9 +134,22 @@ const AttendanceDashboard = () => {
           <div><div className="flex items-center gap-2"><h2 className="text-2xl font-bold text-foreground">Mark Attendance</h2><span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{activeName}</span></div><p className="text-sm text-muted-foreground">{filteredStudents.length} students</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="destructive" size="sm" onClick={() => { setAttendance({}); }} className="gap-1.5"><Trash2 className="h-4 w-4" /> Clear All</Button>
+          <Button variant="destructive" size="sm" onClick={() => { setAttendance({}); setRemarks({}); }} className="gap-1.5"><Trash2 className="h-4 w-4" /> Clear All</Button>
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing} className="gap-1.5"><RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync Sheet</Button>
         </div>
+      </div>
+
+      {/* Session Toggle */}
+      <div className="mb-4 flex items-center gap-2">
+        <div className="inline-flex rounded-lg border border-border bg-muted p-1">
+          <button onClick={() => setSelectedSession("AM")} className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all ${selectedSession === "AM" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <Sun className="h-4 w-4" /> Morning (AM)
+          </button>
+          <button onClick={() => setSelectedSession("PM")} className={`flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all ${selectedSession === "PM" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <Moon className="h-4 w-4" /> Afternoon (PM)
+          </button>
+        </div>
+        <span className="text-xs text-muted-foreground">Marking: <strong>{selectedSession}</strong> session</span>
       </div>
 
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
@@ -149,17 +186,46 @@ const AttendanceDashboard = () => {
             <div key={s.id} className={`rounded-xl border p-3 transition-all ${attendance[s.id] === "P" ? "border-success/50 bg-success/5" : attendance[s.id] === "AB" ? "border-destructive/50 bg-destructive/5" : attendance[s.id] === "L" ? "border-warning/50 bg-warning/5" : attendance[s.id] === "H" ? "border-purple-400/50 bg-purple-50" : "border-border bg-card"}`}>
               <div className="mb-2"><span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{s.roll_no}</span><p className="mt-1 text-sm font-semibold text-foreground truncate">{s.student_name}</p><p className="text-[10px] text-muted-foreground truncate">{s.grade} · {s.curriculum} · {s.classroom_name}</p></div>
               <div className="flex gap-1">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div>
+              {attendance[s.id] === "L" && (
+                <textarea
+                  value={remarks[s.id] || ""}
+                  onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                  placeholder="Reason for leave..."
+                  className="mt-2 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs resize-y"
+                  rows={2}
+                />
+              )}
             </div>
           ))}
         </div>
       ) : (
         <div className="rounded-lg border border-border overflow-auto">
-          <table className="w-full text-sm"><thead><tr className="bg-muted/50"><th className="px-3 py-2.5 text-left font-semibold text-foreground">Roll No</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Student Name</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Grade</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Curriculum</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Classroom</th><th className="px-3 py-2.5 text-center font-semibold text-foreground">Attendance</th></tr></thead>
-            <tbody>{filteredStudents.map((s, i) => (<tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}><td className="px-3 py-2.5 font-medium text-foreground">{s.roll_no}</td><td className="px-3 py-2.5 text-foreground">{s.student_name}</td><td className="px-3 py-2.5 text-muted-foreground">{s.grade}</td><td className="px-3 py-2.5 text-muted-foreground">{s.curriculum}</td><td className="px-3 py-2.5 text-muted-foreground">{s.classroom_name}</td><td className="px-3 py-2.5"><div className="flex justify-center gap-1.5">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div></td></tr>))}</tbody></table>
+          <table className="w-full text-sm"><thead><tr className="bg-muted/50"><th className="px-3 py-2.5 text-left font-semibold text-foreground">Roll No</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Student Name</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Grade</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Curriculum</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Classroom</th><th className="px-3 py-2.5 text-center font-semibold text-foreground">Attendance</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Remark</th></tr></thead>
+            <tbody>{filteredStudents.map((s, i) => (<tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+              <td className="px-3 py-2.5 font-medium text-foreground">{s.roll_no}</td>
+              <td className="px-3 py-2.5 text-foreground">{s.student_name}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{s.grade}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{s.curriculum}</td>
+              <td className="px-3 py-2.5 text-muted-foreground">{s.classroom_name}</td>
+              <td className="px-3 py-2.5"><div className="flex justify-center gap-1.5">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div></td>
+              <td className="px-3 py-2.5">
+                {attendance[s.id] === "L" ? (
+                  <textarea
+                    value={remarks[s.id] || ""}
+                    onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                    placeholder="Reason for leave..."
+                    className="w-full min-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs resize-y"
+                    rows={1}
+                  />
+                ) : (
+                  <span className="text-xs text-muted-foreground">{remarks[s.id] || "—"}</span>
+                )}
+              </td>
+            </tr>))}</tbody></table>
         </div>
       )}
       {filteredStudents.length === 0 && <p className="py-12 text-center text-muted-foreground">No students found</p>}
-      {canEdit && <button onClick={handleSave} disabled={saving} className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-bold text-success-foreground shadow-lg transition-all hover:scale-105 ${hasUnsavedChanges ? "animate-pulse" : ""}`}>{saving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save All</button>}
+      {canEdit && <button onClick={handleSave} disabled={saving} className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-bold text-success-foreground shadow-lg transition-all hover:scale-105 ${hasUnsavedChanges ? "animate-pulse" : ""}`}>{saving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save {selectedSession}</button>}
     </div>
   );
 };

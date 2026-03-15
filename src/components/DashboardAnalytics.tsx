@@ -3,23 +3,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
-import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
+import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { getCombinedStatus } from "@/lib/attendanceSession";
 
-const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Unmarked: "hsl(30, 15%, 70%)" };
+const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Half: "hsl(25, 95%, 53%)", Unmarked: "hsl(30, 15%, 70%)" };
 
 const DashboardAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
-  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
+  const { activeSlug } = useActiveDataset();
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+      if (!activeSlug) return;
       setLoading(true);
       const [attRes, stuRes] = await Promise.all([
-        supabase.from("attendance").select("student_id, status").eq("date", today),
+        supabase.from("attendance").select("student_id, status, session").eq("date", today),
         supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
       ]);
       setAttendance(attRes.data ?? []);
@@ -27,12 +28,22 @@ const DashboardAnalytics = () => {
       setLoading(false);
     };
     fetchData();
-  }, [today, activeSlug]); // ✅ FIX: re-fetch when dataset changes
+  }, [today, activeSlug]);
 
+  // Build per-student combined status
   const attMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    attendance.forEach((a) => (map[a.student_id] = a.status));
-    return map;
+    const sessionMap: Record<string, { AM?: string; PM?: string }> = {};
+    attendance.forEach((a: any) => {
+      if (!sessionMap[a.student_id]) sessionMap[a.student_id] = {};
+      const session = a.session || "AM";
+      if (session === "AM") sessionMap[a.student_id].AM = a.status;
+      else sessionMap[a.student_id].PM = a.status;
+    });
+    const combined: Record<string, string> = {};
+    Object.entries(sessionMap).forEach(([sid, s]) => {
+      combined[sid] = getCombinedStatus(s.AM, s.PM);
+    });
+    return combined;
   }, [attendance]);
 
   const totalStudents = students.length;
@@ -41,7 +52,8 @@ const DashboardAnalytics = () => {
   const presentCount = students.filter((s) => attMap[s.id] === "P").length;
   const absentCount = students.filter((s) => attMap[s.id] === "AB").length;
   const leaveCount = students.filter((s) => attMap[s.id] === "L").length;
-  const unmarkedCount = totalStudents - presentCount - absentCount - leaveCount;
+  const halfDayCount = students.filter((s) => attMap[s.id] && !["P", "AB", "L", "H", ""].includes(attMap[s.id])).length;
+  const unmarkedCount = totalStudents - presentCount - absentCount - leaveCount - halfDayCount;
   const presentPct = totalStudents ? Math.round((presentCount / totalStudents) * 100) : 0;
   const absentPct = totalStudents ? Math.round((absentCount / totalStudents) * 100) : 0;
   const leavePct = totalStudents ? Math.round((leaveCount / totalStudents) * 100) : 0;
@@ -50,24 +62,26 @@ const DashboardAnalytics = () => {
     { name: "Present", value: presentCount, color: COLORS.P },
     { name: "Absent", value: absentCount, color: COLORS.AB },
     { name: "Leave", value: leaveCount, color: COLORS.L },
+    { name: "Half Day", value: halfDayCount, color: COLORS.Half },
     { name: "Unmarked", value: unmarkedCount, color: COLORS.Unmarked },
   ].filter((d) => d.value > 0);
 
   const classroomData = useMemo(() => {
-    const classrooms: Record<string, { total: number; P: number; AB: number; L: number }> = {};
+    const classrooms: Record<string, { total: number; P: number; AB: number; L: number; half: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
-      if (!classrooms[name]) classrooms[name] = { total: 0, P: 0, AB: 0, L: 0 };
+      if (!classrooms[name]) classrooms[name] = { total: 0, P: 0, AB: 0, L: 0, half: 0 };
       classrooms[name].total++;
       const status = attMap[s.id];
       if (status === "P") classrooms[name].P++;
       else if (status === "AB") classrooms[name].AB++;
       else if (status === "L") classrooms[name].L++;
+      else if (status && status !== "H") classrooms[name].half++;
     });
     return Object.entries(classrooms).map(([name, data]) => ({
       name: name.length > 25 ? name.slice(0, 22) + "…" : name,
       fullName: name,
-      Present: data.P, Absent: data.AB, Leave: data.L,
+      Present: data.P, Absent: data.AB, Leave: data.L, HalfDay: data.half,
       total: data.total,
       presentPct: data.total ? Math.round((data.P / data.total) * 100) : 0,
     })).sort((a, b) => a.name.localeCompare(b.name));
@@ -125,11 +139,12 @@ const DashboardAnalytics = () => {
                 <Tooltip content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
                   const d = payload[0]?.payload;
-                  return <div className="rounded-lg border border-border bg-card p-3 shadow-lg"><p className="text-xs font-bold">{d.fullName}</p><p className="text-xs text-success">Present: {d.Present}</p><p className="text-xs text-destructive">Absent: {d.Absent}</p><p className="text-xs text-warning">Leave: {d.Leave}</p><p className="mt-1 text-xs font-semibold">{d.presentPct}%</p></div>;
+                  return <div className="rounded-lg border border-border bg-card p-3 shadow-lg"><p className="text-xs font-bold">{d.fullName}</p><p className="text-xs text-success">Present: {d.Present}</p><p className="text-xs text-destructive">Absent: {d.Absent}</p><p className="text-xs text-warning">Leave: {d.Leave}</p><p className="text-xs text-orange-600">Half Day: {d.HalfDay}</p><p className="mt-1 text-xs font-semibold">{d.presentPct}%</p></div>;
                 }} />
                 <Bar dataKey="Present" stackId="a" fill={COLORS.P} />
                 <Bar dataKey="Absent" stackId="a" fill={COLORS.AB} />
-                <Bar dataKey="Leave" stackId="a" fill={COLORS.L} radius={[0, 4, 4, 0]} />
+                <Bar dataKey="Leave" stackId="a" fill={COLORS.L} />
+                <Bar dataKey="HalfDay" stackId="a" fill={COLORS.Half} radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
