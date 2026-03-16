@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { logActivity } from "@/hooks/useActivityLog";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 
