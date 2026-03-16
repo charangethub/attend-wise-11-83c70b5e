@@ -91,6 +91,29 @@ const AttendanceDashboard = () => {
       if (toDelete.length > 0) {
         for (const sid of toDelete) { await supabase.from("attendance").delete().eq("student_id", sid).eq("date", selectedDate).eq("session", selectedSession); }
       }
+      // Log activity for each changed student
+      const changedStudents = Object.keys(attendance).filter((sid) => attendance[sid] !== originalAttendance[sid] || remarks[sid] !== originalRemarks[sid]);
+      if (changedStudents.length > 0) {
+        const studentMap = new Map(students.map((s) => [s.id, s.student_name]));
+        for (const sid of changedStudents.slice(0, 50)) {
+          await logActivity({
+            userId: user.id,
+            userEmail: user.email ?? "",
+            userName: user.user_metadata?.full_name ?? user.email ?? "",
+            action: `${selectedSession} attendance marked`,
+            studentName: studentMap.get(sid) ?? "",
+            studentId: sid,
+            details: { date: selectedDate, session: selectedSession, status: attendance[sid], remark: remarks[sid] || "" },
+          });
+        }
+        if (changedStudents.length > 50) {
+          await logActivity({
+            userId: user.id, userEmail: user.email ?? "", userName: user.user_metadata?.full_name ?? user.email ?? "",
+            action: `Bulk ${selectedSession} attendance saved`,
+            details: { date: selectedDate, session: selectedSession, total_students: changedStudents.length },
+          });
+        }
+      }
       setOriginalAttendance({ ...attendance });
       setOriginalRemarks({ ...remarks });
       toast.success(`${selectedSession} Attendance saved!`);
