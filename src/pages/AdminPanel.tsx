@@ -26,7 +26,7 @@ const AdminPanel = () => {
   const { user, userRole } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"users" | "settings" | "datasets">("datasets");
+  const [tab, setTab] = useState<"users" | "settings" | "datasets" | "logs" | "online">("datasets");
   const [users, setUsers] = useState<UserRow[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [datasets, setDatasets] = useState<Dataset[]>([]);
