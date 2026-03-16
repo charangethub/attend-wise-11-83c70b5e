@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Shield, Save, Users, Settings, ArrowLeft, UserPlus, Trash2, Crown, Clock, Loader2, ArrowUpToLine, RefreshCw, BookOpen, Plus, ExternalLink, CheckCircle2, Circle, Pencil, Info } from "lucide-react";
+import { Shield, Save, Users, Settings, ArrowLeft, UserPlus, Trash2, Crown, Clock, Loader2, ArrowUpToLine, RefreshCw, BookOpen, Plus, ExternalLink, CheckCircle2, Circle, Pencil, Info, Activity, Wifi } from "lucide-react";
 import { PAGE_OPTIONS } from "@/config/pageOptions";
 import { format } from "date-fns";
 
