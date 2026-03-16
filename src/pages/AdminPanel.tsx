@@ -119,6 +119,8 @@ const AdminPanel = () => {
         <Button variant={tab === "datasets" ? "default" : "outline"} onClick={() => setTab("datasets")} className="gap-1.5"><BookOpen className="h-4 w-4" /> Student Datasets</Button>
         <Button variant={tab === "users" ? "default" : "outline"} onClick={() => setTab("users")} className="gap-1.5"><Users className="h-4 w-4" /> Users</Button>
         <Button variant={tab === "settings" ? "default" : "outline"} onClick={() => setTab("settings")} className="gap-1.5"><Settings className="h-4 w-4" /> System Settings</Button>
+        <Button variant={tab === "logs" ? "default" : "outline"} onClick={() => setTab("logs")} className="gap-1.5"><Activity className="h-4 w-4" /> Activity Logs</Button>
+        <Button variant={tab === "online" ? "default" : "outline"} onClick={() => setTab("online")} className="gap-1.5"><Wifi className="h-4 w-4" /> Live Users</Button>
       </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove User</AlertDialogTitle><AlertDialogDescription>Permanently remove <strong>{deleteTarget?.full_name}</strong>?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
