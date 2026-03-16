@@ -220,6 +220,8 @@ const AdminPanel = () => {
           <div className="flex justify-end"><Button onClick={saveSettings} disabled={savingSettings} className="gap-1.5"><Save className="h-4 w-4" /> {savingSettings ? "Saving..." : "Save All Settings"}</Button></div>
         </div>
       )}
+      {tab === "logs" && <ActivityLogViewer />}
+      {tab === "online" && <OnlineUsersWidget />}
     </div>
   );
 };
