@@ -13,6 +13,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { toast } from "sonner";
 import { Shield, Save, Users, Settings, ArrowLeft, UserPlus, Trash2, Crown, Clock, Loader2, ArrowUpToLine, RefreshCw, BookOpen, Plus, ExternalLink, CheckCircle2, Circle, Pencil, Info, Activity, Wifi } from "lucide-react";
 import { PAGE_OPTIONS } from "@/config/pageOptions";
+import ActivityLogViewer from "@/components/ActivityLogViewer";
+import OnlineUsersWidget from "@/components/OnlineUsersWidget";
 import { format } from "date-fns";
 
 type UserRow = { user_id: string; email: string; full_name: string; role: string; status: string; pageAccess: Record<string, boolean>; };
