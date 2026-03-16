@@ -1,6 +1,6 @@
 import {
   Users, LayoutDashboard, ClipboardCheck, AlertTriangle,
-  BarChart3, FileText, Shield, LogOut, RefreshCw, ExternalLink,
+  BarChart3, FileText, Shield, LogOut, RefreshCw, ExternalLink, CalendarDays,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
