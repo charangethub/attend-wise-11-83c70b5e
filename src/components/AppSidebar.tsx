@@ -22,6 +22,7 @@ const mainItems = [
   { title: "Absentee Report", url: "/absentees", icon: AlertTriangle },
   { title: "Attendance Records", url: "/records", icon: BarChart3 },
   { title: "Daily Report", url: "/daily-report", icon: FileText },
+  { title: "Student Calendar", url: "/student-calendar", icon: CalendarDays },
 ];
 
 export function AppSidebar() {
