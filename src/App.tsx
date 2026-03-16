@@ -18,6 +18,7 @@ import AbsenteeDashboard from "./pages/AbsenteeDashboard";
 import AttendanceRecords from "./pages/AttendanceRecords";
 import DailyAttendanceReport from "./pages/DailyAttendanceReport";
 import NotFound from "./pages/NotFound";
+import StudentCalendarReport from "./pages/StudentCalendarReport";
 
 const queryClient = new QueryClient();
 
