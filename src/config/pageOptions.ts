@@ -4,6 +4,7 @@ export const PAGE_OPTIONS = [
   "Absentee Report",
   "Attendance Records",
   "Daily Report",
+  "Student Calendar",
 ] as const;
 
 export type PageName = (typeof PAGE_OPTIONS)[number];
