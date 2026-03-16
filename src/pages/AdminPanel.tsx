@@ -11,8 +11,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Shield, Save, Users, Settings, ArrowLeft, UserPlus, Trash2, Crown, Clock, Loader2, ArrowUpToLine, RefreshCw, BookOpen, Plus, ExternalLink, CheckCircle2, Circle, Pencil, Info } from "lucide-react";
+import { Shield, Save, Users, Settings, ArrowLeft, UserPlus, Trash2, Crown, Clock, Loader2, ArrowUpToLine, RefreshCw, BookOpen, Plus, ExternalLink, CheckCircle2, Circle, Pencil, Info, Activity, Wifi } from "lucide-react";
 import { PAGE_OPTIONS } from "@/config/pageOptions";
+import ActivityLogViewer from "@/components/ActivityLogViewer";
+import OnlineUsersWidget from "@/components/OnlineUsersWidget";
 import { format } from "date-fns";
 
 type UserRow = { user_id: string; email: string; full_name: string; role: string; status: string; pageAccess: Record<string, boolean>; };
@@ -26,7 +28,7 @@ const AdminPanel = () => {
   const { user, userRole } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"users" | "settings" | "datasets">("datasets");
+  const [tab, setTab] = useState<"users" | "settings" | "datasets" | "logs" | "online">("datasets");
   const [users, setUsers] = useState<UserRow[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -119,6 +121,8 @@ const AdminPanel = () => {
         <Button variant={tab === "datasets" ? "default" : "outline"} onClick={() => setTab("datasets")} className="gap-1.5"><BookOpen className="h-4 w-4" /> Student Datasets</Button>
         <Button variant={tab === "users" ? "default" : "outline"} onClick={() => setTab("users")} className="gap-1.5"><Users className="h-4 w-4" /> Users</Button>
         <Button variant={tab === "settings" ? "default" : "outline"} onClick={() => setTab("settings")} className="gap-1.5"><Settings className="h-4 w-4" /> System Settings</Button>
+        <Button variant={tab === "logs" ? "default" : "outline"} onClick={() => setTab("logs")} className="gap-1.5"><Activity className="h-4 w-4" /> Activity Logs</Button>
+        <Button variant={tab === "online" ? "default" : "outline"} onClick={() => setTab("online")} className="gap-1.5"><Wifi className="h-4 w-4" /> Live Users</Button>
       </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove User</AlertDialogTitle><AlertDialogDescription>Permanently remove <strong>{deleteTarget?.full_name}</strong>?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
@@ -218,6 +222,8 @@ const AdminPanel = () => {
           <div className="flex justify-end"><Button onClick={saveSettings} disabled={savingSettings} className="gap-1.5"><Save className="h-4 w-4" /> {savingSettings ? "Saving..." : "Save All Settings"}</Button></div>
         </div>
       )}
+      {tab === "logs" && <ActivityLogViewer />}
+      {tab === "online" && <OnlineUsersWidget />}
     </div>
   );
 };

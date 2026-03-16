@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { logActivity } from "@/hooks/useActivityLog";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 
@@ -89,6 +90,29 @@ const AttendanceDashboard = () => {
       }
       if (toDelete.length > 0) {
         for (const sid of toDelete) { await supabase.from("attendance").delete().eq("student_id", sid).eq("date", selectedDate).eq("session", selectedSession); }
+      }
+      // Log activity for each changed student
+      const changedStudents = Object.keys(attendance).filter((sid) => attendance[sid] !== originalAttendance[sid] || remarks[sid] !== originalRemarks[sid]);
+      if (changedStudents.length > 0) {
+        const studentMap = new Map(students.map((s) => [s.id, s.student_name]));
+        for (const sid of changedStudents.slice(0, 50)) {
+          await logActivity({
+            userId: user.id,
+            userEmail: user.email ?? "",
+            userName: user.user_metadata?.full_name ?? user.email ?? "",
+            action: `${selectedSession} attendance marked`,
+            studentName: studentMap.get(sid) ?? "",
+            studentId: sid,
+            details: { date: selectedDate, session: selectedSession, status: attendance[sid], remark: remarks[sid] || "" },
+          });
+        }
+        if (changedStudents.length > 50) {
+          await logActivity({
+            userId: user.id, userEmail: user.email ?? "", userName: user.user_metadata?.full_name ?? user.email ?? "",
+            action: `Bulk ${selectedSession} attendance saved`,
+            details: { date: selectedDate, session: selectedSession, total_students: changedStudents.length },
+          });
+        }
       }
       setOriginalAttendance({ ...attendance });
       setOriginalRemarks({ ...remarks });
@@ -200,7 +224,7 @@ const AttendanceDashboard = () => {
         </div>
       ) : (
         <div className="rounded-lg border border-border overflow-auto">
-          <table className="w-full text-sm"><thead><tr className="bg-muted/50"><th className="px-3 py-2.5 text-left font-semibold text-foreground">Roll No</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Student Name</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Grade</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Curriculum</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Classroom</th><th className="px-3 py-2.5 text-center font-semibold text-foreground">Attendance</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Remark</th></tr></thead>
+          <table className="w-full text-sm"><thead className="sticky top-0 z-10"><tr className="bg-muted/80 backdrop-blur"><th className="px-3 py-2.5 text-left font-semibold text-foreground">Roll No</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Student Name</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Grade</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Curriculum</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Classroom</th><th className="px-3 py-2.5 text-center font-semibold text-foreground">Attendance</th><th className="px-3 py-2.5 text-left font-semibold text-foreground">Remark</th></tr></thead>
             <tbody>{filteredStudents.map((s, i) => (<tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
               <td className="px-3 py-2.5 font-medium text-foreground">{s.roll_no}</td>
               <td className="px-3 py-2.5 text-foreground">{s.student_name}</td>

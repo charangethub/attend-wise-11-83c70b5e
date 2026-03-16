@@ -18,6 +18,7 @@ import AbsenteeDashboard from "./pages/AbsenteeDashboard";
 import AttendanceRecords from "./pages/AttendanceRecords";
 import DailyAttendanceReport from "./pages/DailyAttendanceReport";
 import NotFound from "./pages/NotFound";
+import StudentCalendarReport from "./pages/StudentCalendarReport";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/absentees" element={<ProtectedRoute requiredPage="Absentee Report"><SidebarLayout><AbsenteeDashboard /></SidebarLayout></ProtectedRoute>} />
             <Route path="/records" element={<ProtectedRoute requiredPage="Attendance Records"><SidebarLayout><AttendanceRecords /></SidebarLayout></ProtectedRoute>} />
             <Route path="/daily-report" element={<ProtectedRoute requiredPage="Daily Report"><SidebarLayout><DailyAttendanceReport /></SidebarLayout></ProtectedRoute>} />
+            <Route path="/student-calendar" element={<ProtectedRoute requiredPage="Student Calendar"><SidebarLayout><StudentCalendarReport /></SidebarLayout></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

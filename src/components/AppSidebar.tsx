@@ -1,6 +1,6 @@
 import {
   Users, LayoutDashboard, ClipboardCheck, AlertTriangle,
-  BarChart3, FileText, Shield, LogOut, RefreshCw, ExternalLink,
+  BarChart3, FileText, Shield, LogOut, RefreshCw, ExternalLink, CalendarDays,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,6 +22,7 @@ const mainItems = [
   { title: "Absentee Report", url: "/absentees", icon: AlertTriangle },
   { title: "Attendance Records", url: "/records", icon: BarChart3 },
   { title: "Daily Report", url: "/daily-report", icon: FileText },
+  { title: "Student Calendar", url: "/student-calendar", icon: CalendarDays },
 ];
 
 export function AppSidebar() {
