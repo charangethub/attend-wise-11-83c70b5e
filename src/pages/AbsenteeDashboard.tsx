@@ -25,6 +25,7 @@ const AbsenteeDashboard = () => {
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
 
   useEffect(() => {
     const fetchData = async () => {

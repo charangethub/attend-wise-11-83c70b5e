@@ -262,6 +262,20 @@ const AttendanceDashboard = () => {
       )}
       {filteredStudents.length === 0 && <p className="py-12 text-center text-muted-foreground">No students found</p>}
       {canEdit && <button onClick={handleSave} disabled={saving} className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-bold text-success-foreground shadow-lg transition-all hover:scale-105 ${hasUnsavedChanges ? "animate-pulse" : ""}`}>{saving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save {selectedSession}</button>}
+      {remarkDialogStudent && (
+        <RemarkDialog
+          open={!!remarkDialogStudent}
+          onOpenChange={(open) => { if (!open) setRemarkDialogStudent(null); }}
+          studentName={remarkDialogStudent.student_name}
+          rollNo={remarkDialogStudent.roll_no}
+          grade={remarkDialogStudent.grade}
+          classroom={remarkDialogStudent.classroom_name}
+          date={selectedDate}
+          session={selectedSession}
+          currentRemark={remarks[remarkDialogStudent.id] || ""}
+          onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
+        />
+      )}
     </div>
   );
 };
