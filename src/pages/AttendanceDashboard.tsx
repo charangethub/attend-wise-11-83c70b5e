@@ -35,6 +35,7 @@ const AttendanceDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
+  const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const canEdit = selectedDate === today || userRole === "owner";
 
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);
