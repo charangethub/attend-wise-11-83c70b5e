@@ -236,15 +236,25 @@ const AttendanceDashboard = () => {
               <td className="px-3 py-2.5"><div className="flex justify-center gap-1.5">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div></td>
               <td className="px-3 py-2.5">
                 {attendance[s.id] === "L" ? (
-                  <textarea
-                    value={remarks[s.id] || ""}
-                    onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                    placeholder="Reason for leave..."
-                    className="w-full min-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs resize-y"
-                    rows={1}
-                  />
+                  <button
+                    onClick={() => setRemarkDialogStudent(s)}
+                    className="flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs transition-colors hover:bg-warning/20 min-w-[150px]"
+                  >
+                    <MessageSquare className="h-3 w-3 text-warning shrink-0" />
+                    <span className="truncate">{remarks[s.id] || "Add reason..."}</span>
+                  </button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">{remarks[s.id] || "—"}</span>
+                  remarks[s.id] ? (
+                    <button
+                      onClick={() => setRemarkDialogStudent(s)}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <MessageSquare className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{remarks[s.id]}</span>
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )
                 )}
               </td>
             </tr>))}</tbody></table>
