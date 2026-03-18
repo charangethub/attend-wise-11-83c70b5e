@@ -183,6 +183,19 @@ const AbsenteeDashboard = () => {
             })}</tbody></table>
         </div>
       )}
+      {remarkDialogStudent && (
+        <RemarkDialog
+          open={!!remarkDialogStudent}
+          onOpenChange={(open) => { if (!open) setRemarkDialogStudent(null); }}
+          studentName={remarkDialogStudent.student_name}
+          rollNo={remarkDialogStudent.roll_no}
+          grade={remarkDialogStudent.grade}
+          classroom={remarkDialogStudent.classroom_name}
+          date={selectedDate}
+          currentRemark={remarks[remarkDialogStudent.id] || remarkDialogStudent.combinedRemark || ""}
+          onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
+        />
+      )}
     </div>
   );
 };
