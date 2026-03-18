@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Download, MessageCircle, Save, CalendarDays, Search } from "lucide-react";
+import { ArrowLeft, Download, MessageCircle, Save, CalendarDays, Search, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
+import RemarkDialog from "@/components/RemarkDialog";
 
 const AbsenteeDashboard = () => {
   const navigate = useNavigate();

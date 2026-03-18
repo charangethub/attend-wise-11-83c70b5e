@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { logActivity } from "@/hooks/useActivityLog";
+import RemarkDialog from "@/components/RemarkDialog";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 
