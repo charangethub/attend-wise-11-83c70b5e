@@ -169,7 +169,15 @@ const AbsenteeDashboard = () => {
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.amStatus)}</td>
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.pmStatus)}</td>
                   <td className="px-4 py-2.5 text-center"><span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${getCombinedStatusBadge(s.combined)}`}>{s.combined}</span></td>
-                  <td className="px-4 py-2.5"><textarea value={remarks[s.id] || ""} onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))} placeholder="Enter reason..." className="w-full min-w-[180px] rounded-md border border-input bg-background px-2.5 py-1.5 text-xs resize-y" rows={2} /></td>
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={() => setRemarkDialogStudent(s)}
+                      className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-muted min-w-[150px]"
+                    >
+                      <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{remarks[s.id] || s.combinedRemark || "Add remark..."}</span>
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 text-center"><div className="flex items-center justify-center gap-1">{wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}{wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}{!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}</div></td>
                 </tr>);
             })}</tbody></table>
