@@ -213,13 +213,13 @@ const AttendanceDashboard = () => {
               <div className="mb-2"><span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{s.roll_no}</span><p className="mt-1 text-sm font-semibold text-foreground truncate">{s.student_name}</p><p className="text-[10px] text-muted-foreground truncate">{s.grade} · {s.curriculum} · {s.classroom_name}</p></div>
               <div className="flex gap-1">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div>
               {attendance[s.id] === "L" && (
-                <textarea
-                  value={remarks[s.id] || ""}
-                  onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                  placeholder="Reason for leave..."
-                  className="mt-2 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs resize-y"
-                  rows={2}
-                />
+                <button
+                  onClick={() => setRemarkDialogStudent(s)}
+                  className="mt-2 w-full flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-xs text-left transition-colors hover:bg-warning/20"
+                >
+                  <MessageSquare className="h-3 w-3 text-warning shrink-0" />
+                  <span className="truncate">{remarks[s.id] || "Add reason..."}</span>
+                </button>
               )}
             </div>
           ))}
