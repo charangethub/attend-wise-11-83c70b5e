@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Download, MessageCircle, Save, CalendarDays, Search } from "lucide-react";
+import { ArrowLeft, Download, MessageCircle, Save, CalendarDays, Search, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
+import RemarkDialog from "@/components/RemarkDialog";
 
 const AbsenteeDashboard = () => {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ const AbsenteeDashboard = () => {
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -167,11 +169,32 @@ const AbsenteeDashboard = () => {
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.amStatus)}</td>
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.pmStatus)}</td>
                   <td className="px-4 py-2.5 text-center"><span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${getCombinedStatusBadge(s.combined)}`}>{s.combined}</span></td>
-                  <td className="px-4 py-2.5"><textarea value={remarks[s.id] || ""} onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))} placeholder="Enter reason..." className="w-full min-w-[180px] rounded-md border border-input bg-background px-2.5 py-1.5 text-xs resize-y" rows={2} /></td>
+                  <td className="px-4 py-2.5">
+                    <button
+                      onClick={() => setRemarkDialogStudent(s)}
+                      className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-muted min-w-[150px]"
+                    >
+                      <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span className="truncate">{remarks[s.id] || s.combinedRemark || "Add remark..."}</span>
+                    </button>
+                  </td>
                   <td className="px-4 py-2.5 text-center"><div className="flex items-center justify-center gap-1">{wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}{wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}{!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}</div></td>
                 </tr>);
             })}</tbody></table>
         </div>
+      )}
+      {remarkDialogStudent && (
+        <RemarkDialog
+          open={!!remarkDialogStudent}
+          onOpenChange={(open) => { if (!open) setRemarkDialogStudent(null); }}
+          studentName={remarkDialogStudent.student_name}
+          rollNo={remarkDialogStudent.roll_no}
+          grade={remarkDialogStudent.grade}
+          classroom={remarkDialogStudent.classroom_name}
+          date={selectedDate}
+          currentRemark={remarks[remarkDialogStudent.id] || remarkDialogStudent.combinedRemark || ""}
+          onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
+        />
       )}
     </div>
   );

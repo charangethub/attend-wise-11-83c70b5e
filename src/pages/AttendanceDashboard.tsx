@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { logActivity } from "@/hooks/useActivityLog";
+import RemarkDialog from "@/components/RemarkDialog";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 
@@ -34,6 +35,7 @@ const AttendanceDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
+  const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const canEdit = selectedDate === today || userRole === "owner";
 
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);
@@ -211,13 +213,13 @@ const AttendanceDashboard = () => {
               <div className="mb-2"><span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{s.roll_no}</span><p className="mt-1 text-sm font-semibold text-foreground truncate">{s.student_name}</p><p className="text-[10px] text-muted-foreground truncate">{s.grade} · {s.curriculum} · {s.classroom_name}</p></div>
               <div className="flex gap-1">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div>
               {attendance[s.id] === "L" && (
-                <textarea
-                  value={remarks[s.id] || ""}
-                  onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                  placeholder="Reason for leave..."
-                  className="mt-2 w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs resize-y"
-                  rows={2}
-                />
+                <button
+                  onClick={() => setRemarkDialogStudent(s)}
+                  className="mt-2 w-full flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5 text-xs text-left transition-colors hover:bg-warning/20"
+                >
+                  <MessageSquare className="h-3 w-3 text-warning shrink-0" />
+                  <span className="truncate">{remarks[s.id] || "Add reason..."}</span>
+                </button>
               )}
             </div>
           ))}
@@ -234,15 +236,25 @@ const AttendanceDashboard = () => {
               <td className="px-3 py-2.5"><div className="flex justify-center gap-1.5">{statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}{statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}{statusBtn(s.id, "L", "L", "bg-warning text-warning-foreground")}{statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}</div></td>
               <td className="px-3 py-2.5">
                 {attendance[s.id] === "L" ? (
-                  <textarea
-                    value={remarks[s.id] || ""}
-                    onChange={(e) => setRemarks((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                    placeholder="Reason for leave..."
-                    className="w-full min-w-[150px] rounded-md border border-input bg-background px-2 py-1 text-xs resize-y"
-                    rows={1}
-                  />
+                  <button
+                    onClick={() => setRemarkDialogStudent(s)}
+                    className="flex items-center gap-1.5 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs transition-colors hover:bg-warning/20 min-w-[150px]"
+                  >
+                    <MessageSquare className="h-3 w-3 text-warning shrink-0" />
+                    <span className="truncate">{remarks[s.id] || "Add reason..."}</span>
+                  </button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">{remarks[s.id] || "—"}</span>
+                  remarks[s.id] ? (
+                    <button
+                      onClick={() => setRemarkDialogStudent(s)}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <MessageSquare className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{remarks[s.id]}</span>
+                    </button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )
                 )}
               </td>
             </tr>))}</tbody></table>
@@ -250,6 +262,20 @@ const AttendanceDashboard = () => {
       )}
       {filteredStudents.length === 0 && <p className="py-12 text-center text-muted-foreground">No students found</p>}
       {canEdit && <button onClick={handleSave} disabled={saving} className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full bg-success px-6 py-3 text-sm font-bold text-success-foreground shadow-lg transition-all hover:scale-105 ${hasUnsavedChanges ? "animate-pulse" : ""}`}>{saving ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}Save {selectedSession}</button>}
+      {remarkDialogStudent && (
+        <RemarkDialog
+          open={!!remarkDialogStudent}
+          onOpenChange={(open) => { if (!open) setRemarkDialogStudent(null); }}
+          studentName={remarkDialogStudent.student_name}
+          rollNo={remarkDialogStudent.roll_no}
+          grade={remarkDialogStudent.grade}
+          classroom={remarkDialogStudent.classroom_name}
+          date={selectedDate}
+          session={selectedSession}
+          currentRemark={remarks[remarkDialogStudent.id] || ""}
+          onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
+        />
+      )}
     </div>
   );
 };
