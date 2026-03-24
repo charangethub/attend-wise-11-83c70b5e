@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { logActivity } from "@/hooks/useActivityLog";
@@ -36,7 +36,41 @@ const AttendanceDashboard = () => {
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
+  const [copyingAM, setCopyingAM] = useState(false);
   const canEdit = selectedDate === today || userRole === "owner";
+  const canCopyAM = selectedSession === "PM" && (userRole === "owner" || userRole === "admin");
+
+  const handleCopyAMtoPM = async () => {
+    setCopyingAM(true);
+    try {
+      const { data: amData } = await supabase
+        .from("attendance")
+        .select("student_id, status, remark")
+        .eq("date", selectedDate)
+        .eq("session", "AM");
+      if (!amData || amData.length === 0) {
+        toast.info("No AM attendance found to copy");
+        setCopyingAM(false);
+        return;
+      }
+      const updated = { ...attendance };
+      const updatedRemarks = { ...remarks };
+      let copied = 0;
+      for (const am of amData) {
+        if (!updated[am.student_id]) {
+          updated[am.student_id] = am.status;
+          if (am.remark) updatedRemarks[am.student_id] = am.remark;
+          copied++;
+        }
+      }
+      setAttendance(updated);
+      setRemarks(updatedRemarks);
+      toast.success(`Copied ${copied} unmarked students from AM to PM`);
+    } catch (err: any) {
+      toast.error("Failed to copy AM attendance");
+    }
+    setCopyingAM(false);
+  };
 
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);
 
@@ -176,6 +210,11 @@ const AttendanceDashboard = () => {
           </button>
         </div>
         <span className="text-xs text-muted-foreground">Marking: <strong>{selectedSession}</strong> session</span>
+        {canCopyAM && (
+          <Button variant="outline" size="sm" onClick={handleCopyAMtoPM} disabled={copyingAM} className="gap-1.5 ml-2">
+            <Copy className={`h-4 w-4 ${copyingAM ? "animate-spin" : ""}`} /> Copy AM → PM
+          </Button>
+        )}
       </div>
 
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
