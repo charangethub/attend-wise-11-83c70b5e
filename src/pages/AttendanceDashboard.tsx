@@ -36,7 +36,41 @@ const AttendanceDashboard = () => {
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
+  const [copyingAM, setCopyingAM] = useState(false);
   const canEdit = selectedDate === today || userRole === "owner";
+  const canCopyAM = selectedSession === "PM" && (userRole === "owner" || userRole === "admin");
+
+  const handleCopyAMtoPM = async () => {
+    setCopyingAM(true);
+    try {
+      const { data: amData } = await supabase
+        .from("attendance")
+        .select("student_id, status, remark")
+        .eq("date", selectedDate)
+        .eq("session", "AM");
+      if (!amData || amData.length === 0) {
+        toast.info("No AM attendance found to copy");
+        setCopyingAM(false);
+        return;
+      }
+      const updated = { ...attendance };
+      const updatedRemarks = { ...remarks };
+      let copied = 0;
+      for (const am of amData) {
+        if (!updated[am.student_id]) {
+          updated[am.student_id] = am.status;
+          if (am.remark) updatedRemarks[am.student_id] = am.remark;
+          copied++;
+        }
+      }
+      setAttendance(updated);
+      setRemarks(updatedRemarks);
+      toast.success(`Copied ${copied} unmarked students from AM to PM`);
+    } catch (err: any) {
+      toast.error("Failed to copy AM attendance");
+    }
+    setCopyingAM(false);
+  };
 
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);
 
