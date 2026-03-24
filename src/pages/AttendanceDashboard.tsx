@@ -215,6 +215,8 @@ const AttendanceDashboard = () => {
             <Copy className={`h-4 w-4 ${copyingAM ? "animate-spin" : ""}`} /> Copy AM → PM
           </Button>
         )}
+      </div>
+
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
         <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">Marked: {markedCount} / {filteredStudents.length}</span><div className="flex gap-3 text-xs"><span className="text-success font-bold">P:{pCount}</span><span className="text-destructive font-bold">AB:{abCount}</span><span className="text-warning font-bold">L:{lCount}</span></div></div>
         <Progress value={pct} className="h-2.5" />
