@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -14,6 +14,16 @@ import { logActivity } from "@/hooks/useActivityLog";
 import RemarkDialog from "@/components/RemarkDialog";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
+type AttendanceDraft = { attendance: Record<string, string>; remarks: Record<string, string> };
+
+const readSessionJson = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 const AttendanceDashboard = () => {
   const { user, userRole } = useAuth();
@@ -32,13 +42,18 @@ const AttendanceDashboard = () => {
   const [syncing, setSyncing] = useState(false);
   const [classroomFilter, setClassroomFilter] = useState(() => sessionStorage.getItem("att-classroom") || "all");
   const [enrollmentFilter, setEnrollmentFilter] = useState(() => sessionStorage.getItem("att-enrollment") || "ENROLLED");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem("att-search") || "");
+  const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(() => sessionStorage.getItem("att-unmarked") === "true");
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const [copyingAM, setCopyingAM] = useState(false);
+  const loadedDraftKeyRef = useRef<string | null>(null);
   const canEdit = selectedDate === today || userRole === "owner";
   const canCopyAM = selectedSession === "PM" && (userRole === "owner" || userRole === "admin");
+  const draftStorageKey = useMemo(
+    () => activeSlug ? `att-draft:${activeSlug}:${selectedDate}:${selectedSession}` : null,
+    [activeSlug, selectedDate, selectedSession]
+  );
 
   const handleCopyAMtoPM = async () => {
     setCopyingAM(true);
@@ -77,27 +92,46 @@ const AttendanceDashboard = () => {
   useEffect(() => { sessionStorage.setItem("att-session", selectedSession); }, [selectedSession]);
   useEffect(() => { sessionStorage.setItem("att-classroom", classroomFilter); }, [classroomFilter]);
   useEffect(() => { sessionStorage.setItem("att-enrollment", enrollmentFilter); }, [enrollmentFilter]);
+  useEffect(() => { sessionStorage.setItem("att-search", searchQuery); }, [searchQuery]);
+  useEffect(() => { sessionStorage.setItem("att-unmarked", String(showUnmarkedOnly)); }, [showUnmarkedOnly]);
+  useEffect(() => { loadedDraftKeyRef.current = null; }, [draftStorageKey]);
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!activeSlug) return;
+      if (!activeSlug || !draftStorageKey) return;
       setLoading(true);
       const [stuRes, attRes] = await Promise.all([
         supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
         supabase.from("attendance").select("student_id, status, remark, session").eq("date", selectedDate).eq("session", selectedSession),
       ]);
+      const serverAttendance: Record<string, string> = {};
+      const serverRemarks: Record<string, string> = {};
+      (attRes.data ?? []).forEach((a: any) => { serverAttendance[a.student_id] = a.status; serverRemarks[a.student_id] = a.remark || ""; });
+      const draft = readSessionJson<AttendanceDraft | null>(draftStorageKey, null);
+
       setStudents(stuRes.data ?? []);
-      const map: Record<string, string> = {};
-      const rMap: Record<string, string> = {};
-      (attRes.data ?? []).forEach((a: any) => { map[a.student_id] = a.status; rMap[a.student_id] = a.remark || ""; });
-      setAttendance(map);
-      setOriginalAttendance(map);
-      setRemarks(rMap);
-      setOriginalRemarks(rMap);
+      setAttendance(draft?.attendance ?? serverAttendance);
+      setOriginalAttendance(serverAttendance);
+      setRemarks(draft?.remarks ?? serverRemarks);
+      setOriginalRemarks(serverRemarks);
+      loadedDraftKeyRef.current = draftStorageKey;
       setLoading(false);
     };
     fetchData();
-  }, [selectedDate, activeSlug, selectedSession]);
+  }, [selectedDate, activeSlug, selectedSession, draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftStorageKey || loading || loadedDraftKeyRef.current !== draftStorageKey) return;
+    const hasDraftChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance)
+      || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
+
+    if (!hasDraftChanges) {
+      sessionStorage.removeItem(draftStorageKey);
+      return;
+    }
+
+    sessionStorage.setItem(draftStorageKey, JSON.stringify({ attendance, remarks } satisfies AttendanceDraft));
+  }, [draftStorageKey, loading, attendance, remarks, originalAttendance, originalRemarks]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
   const filteredStudents = useMemo(() => students.filter((s) => {
@@ -156,6 +190,10 @@ const AttendanceDashboard = () => {
       }
       setOriginalAttendance({ ...attendance });
       setOriginalRemarks({ ...remarks });
+      if (draftStorageKey) {
+        sessionStorage.removeItem(draftStorageKey);
+        loadedDraftKeyRef.current = null;
+      }
       toast.success(`${selectedSession} Attendance saved!`);
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
     } catch (err: any) { toast.error("Save failed: " + (err.message || "Unknown error")); }
