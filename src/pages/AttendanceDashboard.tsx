@@ -122,8 +122,16 @@ const AttendanceDashboard = () => {
 
   useEffect(() => {
     if (!draftStorageKey || loading || loadedDraftKeyRef.current !== draftStorageKey) return;
+    const hasDraftChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance)
+      || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
+
+    if (!hasDraftChanges) {
+      sessionStorage.removeItem(draftStorageKey);
+      return;
+    }
+
     sessionStorage.setItem(draftStorageKey, JSON.stringify({ attendance, remarks } satisfies AttendanceDraft));
-  }, [draftStorageKey, loading, attendance, remarks]);
+  }, [draftStorageKey, loading, attendance, remarks, originalAttendance, originalRemarks]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
   const filteredStudents = useMemo(() => students.filter((s) => {
@@ -182,7 +190,10 @@ const AttendanceDashboard = () => {
       }
       setOriginalAttendance({ ...attendance });
       setOriginalRemarks({ ...remarks });
-      if (draftStorageKey) sessionStorage.removeItem(draftStorageKey);
+      if (draftStorageKey) {
+        sessionStorage.removeItem(draftStorageKey);
+        loadedDraftKeyRef.current = null;
+      }
       toast.success(`${selectedSession} Attendance saved!`);
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
     } catch (err: any) { toast.error("Save failed: " + (err.message || "Unknown error")); }
