@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 type UseActiveDatasetResult = {
@@ -8,13 +8,18 @@ type UseActiveDatasetResult = {
   refetch: () => void;
 };
 
+let cachedSlug: string | null = null;
+let cachedName: string | null = null;
+
 export function useActiveDataset(): UseActiveDatasetResult {
-  const [activeSlug, setActiveSlug] = useState<string>("master_list_adilabad");
-  const [activeName, setActiveName] = useState<string>("Students");
-  const [loading, setLoading] = useState(true);
+  const [activeSlug, setActiveSlug] = useState<string>(cachedSlug || "master_list_adilabad");
+  const [activeName, setActiveName] = useState<string>(cachedName || "Students");
+  const [loading, setLoading] = useState(!cachedSlug);
   const [tick, setTick] = useState(0);
+  const fetched = useRef(!!cachedSlug);
 
   useEffect(() => {
+    if (fetched.current && tick === 0) return;
     const fetchDS = async () => {
       setLoading(true);
       const { data, error } = await supabase
@@ -24,9 +29,12 @@ export function useActiveDataset(): UseActiveDatasetResult {
         .limit(1)
         .single();
       if (!error && data) {
-        setActiveSlug((data as any).slug);
-        setActiveName((data as any).name);
+        cachedSlug = (data as any).slug;
+        cachedName = (data as any).name;
+        setActiveSlug(cachedSlug!);
+        setActiveName(cachedName!);
       }
+      fetched.current = true;
       setLoading(false);
     };
     fetchDS();
