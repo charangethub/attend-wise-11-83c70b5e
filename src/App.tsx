@@ -20,7 +20,14 @@ import DailyAttendanceReport from "./pages/DailyAttendanceReport";
 import NotFound from "./pages/NotFound";
 import StudentCalendarReport from "./pages/StudentCalendarReport";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 5,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
