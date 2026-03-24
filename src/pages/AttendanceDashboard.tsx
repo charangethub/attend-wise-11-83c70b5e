@@ -20,8 +20,8 @@ const AttendanceDashboard = () => {
   const navigate = useNavigate();
   const { activeSlug, activeName } = useActiveDataset();
   const today = format(new Date(), "yyyy-MM-dd");
-  const [selectedDate, setSelectedDate] = useState(today);
-  const [selectedSession, setSelectedSession] = useState<"AM" | "PM">("AM");
+  const [selectedDate, setSelectedDate] = useState(() => sessionStorage.getItem("att-date") || today);
+  const [selectedSession, setSelectedSession] = useState<"AM" | "PM">(() => (sessionStorage.getItem("att-session") as "AM" | "PM") || "AM");
   const [students, setStudents] = useState<Student[]>([]);
   const [attendance, setAttendance] = useState<Record<string, string>>({});
   const [originalAttendance, setOriginalAttendance] = useState<Record<string, string>>({});
@@ -30,8 +30,8 @@ const AttendanceDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [classroomFilter, setClassroomFilter] = useState("all");
-  const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
+  const [classroomFilter, setClassroomFilter] = useState(() => sessionStorage.getItem("att-classroom") || "all");
+  const [enrollmentFilter, setEnrollmentFilter] = useState(() => sessionStorage.getItem("att-enrollment") || "ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
