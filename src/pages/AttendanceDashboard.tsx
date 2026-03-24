@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Clock, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, Sun, Moon, MessageSquare, Copy } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { logActivity } from "@/hooks/useActivityLog";
