@@ -73,6 +73,10 @@ const AttendanceDashboard = () => {
   };
 
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);
+  useEffect(() => { sessionStorage.setItem("att-date", selectedDate); }, [selectedDate]);
+  useEffect(() => { sessionStorage.setItem("att-session", selectedSession); }, [selectedSession]);
+  useEffect(() => { sessionStorage.setItem("att-classroom", classroomFilter); }, [classroomFilter]);
+  useEffect(() => { sessionStorage.setItem("att-enrollment", enrollmentFilter); }, [enrollmentFilter]);
 
   useEffect(() => {
     const fetchData = async () => {
