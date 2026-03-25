@@ -264,6 +264,26 @@ const AttendanceDashboard = () => {
         )}
       </div>
 
+      {/* Summary cards */}
+      <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-center">
+          <p className="text-2xl font-bold text-success">{pCount}</p>
+          <p className="text-xs text-muted-foreground">Present</p>
+        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-center">
+          <p className="text-2xl font-bold text-destructive">{abCount}</p>
+          <p className="text-xs text-muted-foreground">Absent</p>
+        </div>
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-center">
+          <p className="text-2xl font-bold text-warning">{lCount}</p>
+          <p className="text-xs text-muted-foreground">On Leave</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+          <p className="text-2xl font-bold text-muted-foreground">{filteredStudents.length - markedCount}</p>
+          <p className="text-xs text-muted-foreground">Unmarked</p>
+        </div>
+      </div>
+
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
         <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">Marked: {markedCount} / {filteredStudents.length}</span><div className="flex gap-3 text-xs"><span className="text-success font-bold">P:{pCount}</span><span className="text-destructive font-bold">AB:{abCount}</span><span className="text-warning font-bold">L:{lCount}</span></div></div>
         <Progress value={pct} className="h-2.5" />
