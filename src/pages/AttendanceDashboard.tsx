@@ -44,6 +44,7 @@ const AttendanceDashboard = () => {
   const [enrollmentFilter, setEnrollmentFilter] = useState(() => sessionStorage.getItem("att-enrollment") || "ENROLLED");
   const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem("att-search") || "");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(() => sessionStorage.getItem("att-unmarked") === "true");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const [copyingAM, setCopyingAM] = useState(false);
@@ -139,8 +140,12 @@ const AttendanceDashboard = () => {
     if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false;
     if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
     if (showUnmarkedOnly && attendance[s.id]) return false;
+    if (statusFilter === "P" && attendance[s.id] !== "P") return false;
+    if (statusFilter === "AB" && attendance[s.id] !== "AB") return false;
+    if (statusFilter === "L" && attendance[s.id] !== "L") return false;
+    if (statusFilter === "H" && attendance[s.id] !== "H") return false;
     return true;
-  }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance]);
+  }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
 
   const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance) || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
@@ -259,6 +264,26 @@ const AttendanceDashboard = () => {
         )}
       </div>
 
+      {/* Summary cards */}
+      <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-center">
+          <p className="text-2xl font-bold text-success">{pCount}</p>
+          <p className="text-xs text-muted-foreground">Present</p>
+        </div>
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-center">
+          <p className="text-2xl font-bold text-destructive">{abCount}</p>
+          <p className="text-xs text-muted-foreground">Absent</p>
+        </div>
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-center">
+          <p className="text-2xl font-bold text-warning">{lCount}</p>
+          <p className="text-xs text-muted-foreground">On Leave</p>
+        </div>
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+          <p className="text-2xl font-bold text-muted-foreground">{filteredStudents.length - markedCount}</p>
+          <p className="text-xs text-muted-foreground">Unmarked</p>
+        </div>
+      </div>
+
       <div className="mb-4 rounded-lg border border-border bg-card p-3">
         <div className="flex items-center justify-between mb-2"><span className="text-sm font-medium">Marked: {markedCount} / {filteredStudents.length}</span><div className="flex gap-3 text-xs"><span className="text-success font-bold">P:{pCount}</span><span className="text-destructive font-bold">AB:{abCount}</span><span className="text-warning font-bold">L:{lCount}</span></div></div>
         <Progress value={pct} className="h-2.5" />
@@ -272,12 +297,21 @@ const AttendanceDashboard = () => {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm flex-wrap">
           <Button variant={showUnmarkedOnly ? "default" : "outline"} size="sm" onClick={() => setShowUnmarkedOnly(!showUnmarkedOnly)}>Show Unmarked Only</Button>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-32 h-9"><SelectValue placeholder="All Status" /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="P">Present</SelectItem><SelectItem value="AB">Absent</SelectItem><SelectItem value="L">On Leave</SelectItem><SelectItem value="H">Holiday</SelectItem></SelectContent></Select>
           <span className="text-muted-foreground ml-2">Mark all:</span>
           <Button variant="outline" size="sm" className="gap-1 text-success border-success/30 hover:bg-success/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "P"; }); setAttendance(u); }}><CheckCircle className="h-3.5 w-3.5" /> All Present</Button>
           <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "AB"; }); setAttendance(u); }}><XCircle className="h-3.5 w-3.5" /> All Absent</Button>
           <Button variant="outline" size="sm" className="gap-1 border-purple-300 hover:bg-purple-50 text-purple-600" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "H"; }); setAttendance(u); }}>🏖 All Holiday</Button>
+          <Button variant="outline" size="sm" className="gap-1 text-muted-foreground border-muted-foreground/30 hover:bg-muted" onClick={() => {
+            const u = { ...attendance };
+            const r = { ...remarks };
+            filteredStudents.forEach((s) => { delete u[s.id]; delete r[s.id]; });
+            setAttendance(u);
+            setRemarks(r);
+            toast.info(`Unmarked ${filteredStudents.length} students`);
+          }}><Trash2 className="h-3.5 w-3.5" /> Unmark</Button>
         </div>
         <div className="flex items-center gap-1">
           <Button variant={viewMode === "card" ? "default" : "outline"} size="icon" className="h-8 w-8" onClick={() => setViewMode("card")}><LayoutGrid className="h-4 w-4" /></Button>
