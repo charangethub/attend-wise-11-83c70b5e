@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Download, MessageCircle, Save, CalendarDays, Search, MessageSquare } from "lucide-react";
+import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
@@ -21,33 +21,27 @@ const AbsenteeDashboard = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [classroomFilter, setClassroomFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return;
-      setLoading(true);
-      const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
-        supabase.from("attendance").select("id, student_id, status, remark, session").eq("date", selectedDate).in("status", ["AB", "L"])
-      ]);
-      setStudents(stuRes.data ?? []);
-      setAttendance(attRes.data ?? []);
-      const rMap: Record<string, string> = {};
-      (attRes.data ?? []).forEach((a: any) => { if (a.remark) rMap[a.student_id] = a.remark; });
-      setRemarks(rMap);
-      setLoading(false);
-    };
-    fetchData();
-  }, [selectedDate, activeSlug]);
+  const fetchData = async () => {
+    if (!activeSlug) return;
+    setLoading(true);
+    const [stuRes, attRes] = await Promise.all([
+      supabase.from("students").select("id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
+      supabase.from("attendance").select("id, student_id, status, remark, session").eq("date", selectedDate).in("status", ["AB", "L"])
+    ]);
+    setStudents(stuRes.data ?? []);
+    setAttendance(attRes.data ?? []);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, [selectedDate, activeSlug]);
 
   // Build per-student combined status from AM/PM records
   const absentees = useMemo(() => {
-    // Group attendance by student
     const studentAttMap = new Map<string, { AM?: any; PM?: any }>();
     attendance.forEach((a: any) => {
       if (!studentAttMap.has(a.student_id)) studentAttMap.set(a.student_id, {});
@@ -75,22 +69,24 @@ const AbsenteeDashboard = () => {
         const combinedRemark = [remarkAM, remarkPM].filter(Boolean).join(" | ");
         return { ...s, combined, amStatus, pmStatus, remarkAM, remarkPM, combinedRemark, sessions };
       })
+      .filter((s) => {
+        if (statusFilter === "absent") return s.combined === "AB" || s.combined.includes("A");
+        if (statusFilter === "absent_no_remark") return !s.combinedRemark;
+        return true;
+      })
       .sort((a, b) => a.roll_no.localeCompare(b.roll_no));
-  }, [students, attendance, classroomFilter, searchQuery]);
+  }, [students, attendance, classroomFilter, searchQuery, statusFilter]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
-  const handleSaveRemarks = async () => {
-    setSaving(true);
+  const handleSaveRemark = async (studentId: string, remark: string) => {
     try {
-      for (const [studentId, remark] of Object.entries(remarks)) {
-        // Update remark on all attendance rows for this student on this date
-        await supabase.from("attendance").update({ remark }).eq("student_id", studentId).eq("date", selectedDate);
-      }
-      toast.success("Remarks saved!");
+      await supabase.from("attendance").update({ remark }).eq("student_id", studentId).eq("date", selectedDate);
+      toast.success("Remark saved!");
+      // Update local state
+      setAttendance(prev => prev.map(a => a.student_id === studentId ? { ...a, remark } : a));
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
-    } catch { toast.error("Failed to save remarks"); }
-    setSaving(false);
+    } catch { toast.error("Failed to save remark"); }
   };
 
   const maskNumber = (num: string) => { if (!num || num.length < 4) return "••••••••"; return "••••••" + num.slice(-4); };
@@ -108,7 +104,7 @@ const AbsenteeDashboard = () => {
     const rows = absentees.map((s) => {
       const base = [s.roll_no, s.student_name, s.grade, s.classroom_name];
       if (isAdminOrOwner) base.push(s.emergency_contact_1 || "", s.emergency_contact_2 || "");
-      base.push(s.amStatus || "—", s.pmStatus || "—", s.combined, remarks[s.id] || s.combinedRemark || "");
+      base.push(s.amStatus || "—", s.pmStatus || "—", s.combined, s.combinedRemark || "");
       return base;
     });
     const csv = [headers, ...rows].map((r) => r.map((c: string) => `"${c}"`).join(",")).join("\n");
@@ -125,13 +121,13 @@ const AbsenteeDashboard = () => {
           <div><h2 className="text-2xl font-bold text-foreground">Daily Absentee Report</h2><p className="text-sm text-muted-foreground">{absentees.length} absent/on leave</p></div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleSaveRemarks} disabled={saving} className="gap-1.5"><Save className="h-4 w-4" /> Save Remarks</Button>
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
         </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" /></div>
         <Select value={classroomFilter} onValueChange={setClassroomFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Classrooms" /></SelectTrigger><SelectContent><SelectItem value="all">All Classrooms</SelectItem>{classrooms.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="absent">Absent</SelectItem><SelectItem value="absent_no_remark">Absent - No Remark</SelectItem></SelectContent></Select>
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : absentees.length === 0 ? <p className="py-12 text-center text-muted-foreground">No absentees for this date 🎉</p> : (
@@ -175,7 +171,7 @@ const AbsenteeDashboard = () => {
                       className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-muted min-w-[150px]"
                     >
                       <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="truncate">{remarks[s.id] || s.combinedRemark || "Add remark..."}</span>
+                      <span className="truncate">{s.combinedRemark || "Add remark..."}</span>
                     </button>
                   </td>
                   <td className="px-4 py-2.5 text-center"><div className="flex items-center justify-center gap-1">{wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}{wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}{!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}</div></td>
@@ -192,8 +188,11 @@ const AbsenteeDashboard = () => {
           grade={remarkDialogStudent.grade}
           classroom={remarkDialogStudent.classroom_name}
           date={selectedDate}
-          currentRemark={remarks[remarkDialogStudent.id] || remarkDialogStudent.combinedRemark || ""}
-          onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
+          currentRemark={remarkDialogStudent.combinedRemark || ""}
+          onSave={(remark) => {
+            handleSaveRemark(remarkDialogStudent.id, remark);
+            setRemarkDialogStudent(null);
+          }}
         />
       )}
     </div>
