@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { format } from "date-fns";
-import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus } from "lucide-react";
+import { format, subDays } from "date-fns";
+import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus, AlertCircle, BarChart3, UsersRound } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus } from "@/lib/attendanceSession";
@@ -10,6 +10,7 @@ const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92
 
 const DashboardAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [allAttendance, setAllAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
@@ -19,18 +20,24 @@ const DashboardAnalytics = () => {
     const fetchData = async () => {
       if (!activeSlug) return;
       setLoading(true);
-      const [attRes, stuRes] = await Promise.all([
+      
+      // Fetch last 7 days for WAU calculation
+      const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
+      
+      const [attRes, stuRes, allAttRes] = await Promise.all([
         supabase.from("attendance").select("student_id, status, session").eq("date", today),
         supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+        supabase.from("attendance").select("student_id, status, session, date").gte("date", weekAgo).lte("date", today),
       ]);
       setAttendance(attRes.data ?? []);
       setStudents(stuRes.data ?? []);
+      setAllAttendance(allAttRes.data ?? []);
       setLoading(false);
     };
     fetchData();
   }, [today, activeSlug]);
 
-  // Build per-student combined status
+  // Build per-student combined status for today
   const attMap = useMemo(() => {
     const sessionMap: Record<string, { AM?: string; PM?: string }> = {};
     attendance.forEach((a: any) => {
@@ -45,6 +52,43 @@ const DashboardAnalytics = () => {
     });
     return combined;
   }, [attendance]);
+
+  // Zero YTD Students: students with zero attendance records in the entire week
+  const zeroYTDCount = useMemo(() => {
+    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
+    const studentsWithAttendance = new Set(allAttendance.filter(a => a.status === "P").map(a => a.student_id));
+    return [...enrolledIds].filter(id => !studentsWithAttendance.has(id)).length;
+  }, [students, allAttendance]);
+
+  // Avg Attendance % (based on all days with data)
+  const avgAttendancePct = useMemo(() => {
+    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
+    // Group by date
+    const dateMap: Record<string, Set<string>> = {};
+    const datePresentMap: Record<string, Set<string>> = {};
+    allAttendance.forEach(a => {
+      if (!enrolledIds.has(a.student_id)) return;
+      if (!dateMap[a.date]) { dateMap[a.date] = new Set(); datePresentMap[a.date] = new Set(); }
+      dateMap[a.date].add(a.student_id);
+      if (a.status === "P") datePresentMap[a.date].add(a.student_id);
+    });
+    const dates = Object.keys(dateMap);
+    if (dates.length === 0) return 0;
+    const totalPct = dates.reduce((sum, d) => {
+      const total = enrolledIds.size || 1;
+      const present = datePresentMap[d]?.size || 0;
+      return sum + (present / total) * 100;
+    }, 0);
+    return Math.round(totalPct / dates.length);
+  }, [students, allAttendance]);
+
+  // Avg WAU: unique students present in last 7 days / total enrolled
+  const avgWAU = useMemo(() => {
+    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
+    if (enrolledIds.size === 0) return 0;
+    const activeStudents = new Set(allAttendance.filter(a => a.status === "P" && enrolledIds.has(a.student_id)).map(a => a.student_id));
+    return Math.round((activeStudents.size / enrolledIds.size) * 100);
+  }, [students, allAttendance]);
 
   const totalStudents = students.length;
   const enrolledCount = students.filter((s) => s.enrollment_status === "ENROLLED").length;
@@ -96,6 +140,12 @@ const DashboardAnalytics = () => {
     { label: "On Leave", value: `${leaveCount} (${leavePct}%)`, icon: Clock, color: "bg-warning/10 text-warning" },
   ];
 
+  const insightCards = [
+    { label: "Zero YTD Students", value: zeroYTDCount, subtitle: "Students with zero attendance", icon: AlertCircle, color: "text-destructive" },
+    { label: "Avg Attendance %", value: `${avgAttendancePct}%`, subtitle: "Scheduled vs Attended", icon: BarChart3, color: "text-primary" },
+    { label: "Avg WAU", value: `${avgWAU}%`, subtitle: "Weekly Active Users", icon: UsersRound, color: "text-success" },
+  ];
+
   if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
 
   return (
@@ -114,6 +164,21 @@ const DashboardAnalytics = () => {
           </div>
         ))}
       </div>
+
+      {/* New insight cards */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {insightCards.map((card) => (
+          <div key={card.label} className="rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-foreground">{card.label}</p>
+              <card.icon className={`h-5 w-5 ${card.color}`} />
+            </div>
+            <p className="text-3xl font-bold text-foreground">{card.value}</p>
+            <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
+          </div>
+        ))}
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4">
           <h4 className="mb-3 text-sm font-semibold text-foreground">Attendance Distribution</h4>
