@@ -140,8 +140,12 @@ const AttendanceDashboard = () => {
     if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false;
     if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
     if (showUnmarkedOnly && attendance[s.id]) return false;
+    if (statusFilter === "P" && attendance[s.id] !== "P") return false;
+    if (statusFilter === "AB" && attendance[s.id] !== "AB") return false;
+    if (statusFilter === "L" && attendance[s.id] !== "L") return false;
+    if (statusFilter === "H" && attendance[s.id] !== "H") return false;
     return true;
-  }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance]);
+  }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
 
   const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance) || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
