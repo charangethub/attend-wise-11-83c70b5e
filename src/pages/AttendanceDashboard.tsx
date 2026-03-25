@@ -297,12 +297,21 @@ const AttendanceDashboard = () => {
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-sm flex-wrap">
           <Button variant={showUnmarkedOnly ? "default" : "outline"} size="sm" onClick={() => setShowUnmarkedOnly(!showUnmarkedOnly)}>Show Unmarked Only</Button>
+          <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-32 h-9"><SelectValue placeholder="All Status" /></SelectTrigger><SelectContent><SelectItem value="all">All Status</SelectItem><SelectItem value="P">Present</SelectItem><SelectItem value="AB">Absent</SelectItem><SelectItem value="L">On Leave</SelectItem><SelectItem value="H">Holiday</SelectItem></SelectContent></Select>
           <span className="text-muted-foreground ml-2">Mark all:</span>
           <Button variant="outline" size="sm" className="gap-1 text-success border-success/30 hover:bg-success/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "P"; }); setAttendance(u); }}><CheckCircle className="h-3.5 w-3.5" /> All Present</Button>
           <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "AB"; }); setAttendance(u); }}><XCircle className="h-3.5 w-3.5" /> All Absent</Button>
           <Button variant="outline" size="sm" className="gap-1 border-purple-300 hover:bg-purple-50 text-purple-600" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "H"; }); setAttendance(u); }}>🏖 All Holiday</Button>
+          <Button variant="outline" size="sm" className="gap-1 text-muted-foreground border-muted-foreground/30 hover:bg-muted" onClick={() => {
+            const u = { ...attendance };
+            const r = { ...remarks };
+            filteredStudents.forEach((s) => { delete u[s.id]; delete r[s.id]; });
+            setAttendance(u);
+            setRemarks(r);
+            toast.info(`Unmarked ${filteredStudents.length} students`);
+          }}><Trash2 className="h-3.5 w-3.5" /> Unmark</Button>
         </div>
         <div className="flex items-center gap-1">
           <Button variant={viewMode === "card" ? "default" : "outline"} size="icon" className="h-8 w-8" onClick={() => setViewMode("card")}><LayoutGrid className="h-4 w-4" /></Button>
