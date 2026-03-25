@@ -44,6 +44,7 @@ const AttendanceDashboard = () => {
   const [enrollmentFilter, setEnrollmentFilter] = useState(() => sessionStorage.getItem("att-enrollment") || "ENROLLED");
   const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem("att-search") || "");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(() => sessionStorage.getItem("att-unmarked") === "true");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const [copyingAM, setCopyingAM] = useState(false);
