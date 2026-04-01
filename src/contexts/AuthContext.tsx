@@ -33,10 +33,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [pageAccess, setPageAccess] = useState<PageAccessMap | null>(null);
   const [adminPanelAccess, setAdminPanelAccess] = useState(false);
 
-  // ✅ FIX (Bug 5): Track whether the very first load has completed.
-  // After that, TOKEN_REFRESHED and other silent events must NOT
-  // flip loading back to true — that unmounts ProtectedRoute children
-  // (including AttendanceDashboard) and wipes all unsaved attendance data.
   const initialLoadDoneRef = useRef(false);
 
   useEffect(() => {
@@ -67,9 +63,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const hydrate = async (nextSession: Session | null) => {
-      // ✅ FIX: Only set loading=true on the very first hydration.
-      // Subsequent calls (TOKEN_REFRESHED, etc.) update state silently
-      // so children (AttendanceDashboard) are never unmounted.
       const isFirst = !initialLoadDoneRef.current;
       if (isFirst) setLoading(true);
 
@@ -87,9 +80,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // ✅ FIX: Use ONLY onAuthStateChange — removed the redundant getSession() call.
-    // onAuthStateChange fires with INITIAL_SESSION on mount (with cached session),
-    // so getSession() was causing a double-hydrate and two loading cycles.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, nextSession) => {
         void hydrate(nextSession);

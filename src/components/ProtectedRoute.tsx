@@ -12,17 +12,12 @@ const ProtectedRoute = ({ children, requiredRole, requiredPage }: ProtectedRoute
   const { user, loading, userRole, userStatus, pageAccess, adminPanelAccess } = useAuth();
   const location = useLocation();
 
-  // ✅ FIX (Bug 6): Once the initial load completes, never show the spinner again.
-  // Previously, any time loading=true (e.g., token refresh), this component
-  // replaced children with a <Spinner>, which UNMOUNTED AttendanceDashboard
-  // and destroyed all in-progress React state (attendance marks, form data, drafts).
   const [hasEverLoaded, setHasEverLoaded] = useState(false);
 
   useEffect(() => {
     if (!loading) setHasEverLoaded(true);
   }, [loading]);
 
-  // Only block rendering on the very first load, never after.
   if (loading && !hasEverLoaded) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
