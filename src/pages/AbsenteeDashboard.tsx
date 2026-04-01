@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -26,7 +26,9 @@ const AbsenteeDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
 
-  const fetchData = async () => {
+  // ✅ FIX (Bug 3): Extracted fetchData into useCallback so it can be called
+  // both from useEffect and from the visibilitychange listener.
+  const fetchData = useCallback(async () => {
     if (!activeSlug) return;
     setLoading(true);
     const [stuRes, attRes] = await Promise.all([
@@ -36,9 +38,23 @@ const AbsenteeDashboard = () => {
     setStudents(stuRes.data ?? []);
     setAttendance(attRes.data ?? []);
     setLoading(false);
-  };
+  }, [selectedDate, activeSlug]);
 
-  useEffect(() => { fetchData(); }, [selectedDate, activeSlug]);
+  // Initial load + reload when date/dataset changes
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // ✅ FIX (Bug 3): Page Visibility API — refetch when user returns to this tab.
+  // If another teacher marked attendance while you were on a different page/tab,
+  // you'll see the updated absentee list as soon as you come back.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void fetchData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
 
   // Build per-student combined status from AM/PM records
   const absentees = useMemo(() => {
@@ -83,7 +99,6 @@ const AbsenteeDashboard = () => {
     try {
       await supabase.from("attendance").update({ remark }).eq("student_id", studentId).eq("date", selectedDate);
       toast.success("Remark saved!");
-      // Update local state
       setAttendance(prev => prev.map(a => a.student_id === studentId ? { ...a, remark } : a));
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
     } catch { toast.error("Failed to save remark"); }
@@ -130,7 +145,11 @@ const AbsenteeDashboard = () => {
         <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="absent">Absent</SelectItem><SelectItem value="absent_no_remark">Absent - No Remark</SelectItem></SelectContent></Select>
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
-      {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : absentees.length === 0 ? <p className="py-12 text-center text-muted-foreground">No absentees for this date 🎉</p> : (
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
+      ) : absentees.length === 0 ? (
+        <p className="py-12 text-center text-muted-foreground">No absentees for this date 🎉</p>
+      ) : (
         <div className="rounded-lg border border-border overflow-auto">
           <table className="w-full text-sm"><thead><tr className="bg-muted/50">
             <th className="px-4 py-2.5 text-left font-semibold">Roll No</th>
@@ -174,9 +193,17 @@ const AbsenteeDashboard = () => {
                       <span className="truncate">{s.combinedRemark || "Add remark..."}</span>
                     </button>
                   </td>
-                  <td className="px-4 py-2.5 text-center"><div className="flex items-center justify-center gap-1">{wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}{wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}{!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}</div></td>
-                </tr>);
-            })}</tbody></table>
+                  <td className="px-4 py-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}
+                      {wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}
+                      {!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
         </div>
       )}
       {remarkDialogStudent && (

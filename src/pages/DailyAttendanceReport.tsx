@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
@@ -15,25 +15,37 @@ const DailyAttendanceReport = () => {
   const { data: settings } = useSystemSettings();
   const { activeSlug } = useActiveDataset();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return;
-      setLoading(true);
-      const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
-        supabase.from("attendance").select("student_id, status, session").eq("date", selectedDate)
-      ]);
-      setStudents(stuRes.data ?? []);
-      setAttendance(attRes.data ?? []);
-      setLoading(false);
-    };
-    fetchData();
+  // ✅ FIX (Bug 3): useCallback so fetchData can be used in visibilitychange listener
+  const fetchData = useCallback(async () => {
+    if (!activeSlug) return;
+    setLoading(true);
+    const [stuRes, attRes] = await Promise.all([
+      supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
+      supabase.from("attendance").select("student_id, status, session").eq("date", selectedDate)
+    ]);
+    setStudents(stuRes.data ?? []);
+    setAttendance(attRes.data ?? []);
+    setLoading(false);
   }, [selectedDate, activeSlug]);
 
-  const dynamicCenter = useMemo(() => { if (settings?.center_name) return settings.center_name; const first = students.find((s: any) => s.center); return first?.center || "Adilabad"; }, [students, settings?.center_name]);
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // ✅ FIX (Bug 3): Refetch when user returns to this tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void fetchData();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
+
+  const dynamicCenter = useMemo(() => {
+    if (settings?.center_name) return settings.center_name;
+    const first = students.find((s: any) => s.center);
+    return first?.center || "Adilabad";
+  }, [students, settings?.center_name]);
 
   const reportData = useMemo(() => {
-    // Build per-student combined status from AM/PM
     const studentSessions: Record<string, { AM?: string; PM?: string }> = {};
     attendance.forEach((a: any) => {
       if (!studentSessions[a.student_id]) studentSessions[a.student_id] = {};
@@ -54,7 +66,7 @@ const DailyAttendanceReport = () => {
         if (combined === "P") classMap[name].present++;
         else if (combined === "AB") classMap[name].absent++;
         else if (combined === "L") classMap[name].leave++;
-        else classMap[name].half++; // P:A, P:L, A:P etc.
+        else classMap[name].half++;
       }
     });
 
