@@ -134,7 +134,7 @@ const AttendanceDashboard = () => {
   useEffect(() => {
     if (!selectedDate || !selectedSession) return;
 
-    const channelName = `attendance-live:${selectedDate}:${selectedSession}`;
+    const channelName = `attendance-live:${selectedDate}:${selectedSession}:${Date.now()}`;
     const channel = supabase
       .channel(channelName)
       .on(
