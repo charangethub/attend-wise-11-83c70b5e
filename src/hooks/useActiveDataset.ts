@@ -34,8 +34,9 @@ export function useActiveDataset(): UseActiveDatasetResult {
   }, [fetchDS, tick]);
 
   useEffect(() => {
+    const channelName = `dataset-active-change-${Date.now()}`;
     const channel = supabase
-      .channel("dataset-active-change")
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
