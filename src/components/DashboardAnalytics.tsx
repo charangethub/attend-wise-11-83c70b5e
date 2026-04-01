@@ -47,7 +47,7 @@ const DashboardAnalytics = () => {
   useEffect(() => {
     if (!activeSlug) return;
     const channel = supabase
-      .channel("dashboard-attendance-live")
+      .channel(`dashboard-attendance-live-${Date.now()}`)
       .on("postgres_changes", {
         event: "*",
         schema: "public",
