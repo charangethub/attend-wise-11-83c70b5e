@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays } from "date-fns";
 import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus, AlertCircle, BarChart3, UsersRound } from "lucide-react";
@@ -16,26 +16,50 @@ const DashboardAnalytics = () => {
   const today = format(new Date(), "yyyy-MM-dd");
   const { activeSlug } = useActiveDataset();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return;
-      setLoading(true);
-      
-      // Fetch last 7 days for WAU calculation
-      const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
-      
-      const [attRes, stuRes, allAttRes] = await Promise.all([
-        supabase.from("attendance").select("student_id, status, session").eq("date", today),
-        supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
-        supabase.from("attendance").select("student_id, status, session, date").gte("date", weekAgo).lte("date", today),
-      ]);
-      setAttendance(attRes.data ?? []);
-      setStudents(stuRes.data ?? []);
-      setAllAttendance(allAttRes.data ?? []);
-      setLoading(false);
-    };
-    fetchData();
+  // ✅ FIX (Bug 3): useCallback for reuse in visibilitychange + Realtime
+  const fetchData = useCallback(async () => {
+    if (!activeSlug) return;
+    setLoading(true);
+    const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
+    const [attRes, stuRes, allAttRes] = await Promise.all([
+      supabase.from("attendance").select("student_id, status, session").eq("date", today),
+      supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+      supabase.from("attendance").select("student_id, status, session, date").gte("date", weekAgo).lte("date", today),
+    ]);
+    setAttendance(attRes.data ?? []);
+    setStudents(stuRes.data ?? []);
+    setAllAttendance(allAttRes.data ?? []);
+    setLoading(false);
   }, [today, activeSlug]);
+
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // ✅ FIX (Bug 3): Refetch when user returns to this tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void fetchData();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
+
+  // ✅ FIX (Bug 2): Realtime subscription — dashboard updates when any user saves attendance
+  useEffect(() => {
+    if (!activeSlug) return;
+    const channel = supabase
+      .channel("dashboard-attendance-live")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "attendance",
+      }, () => {
+        // Silently refresh dashboard stats whenever attendance changes
+        void fetchData();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [activeSlug, fetchData]);
 
   // Build per-student combined status for today
   const attMap = useMemo(() => {
@@ -53,17 +77,14 @@ const DashboardAnalytics = () => {
     return combined;
   }, [attendance]);
 
-  // Zero YTD Students: students with zero attendance records in the entire week
   const zeroYTDCount = useMemo(() => {
     const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
     const studentsWithAttendance = new Set(allAttendance.filter(a => a.status === "P").map(a => a.student_id));
     return [...enrolledIds].filter(id => !studentsWithAttendance.has(id)).length;
   }, [students, allAttendance]);
 
-  // Avg Attendance % (based on all days with data)
   const avgAttendancePct = useMemo(() => {
     const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
-    // Group by date
     const dateMap: Record<string, Set<string>> = {};
     const datePresentMap: Record<string, Set<string>> = {};
     allAttendance.forEach(a => {
@@ -82,7 +103,6 @@ const DashboardAnalytics = () => {
     return Math.round(totalPct / dates.length);
   }, [students, allAttendance]);
 
-  // Avg WAU: unique students present in last 7 days / total enrolled
   const avgWAU = useMemo(() => {
     const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
     if (enrolledIds.size === 0) return 0;
@@ -165,7 +185,6 @@ const DashboardAnalytics = () => {
         ))}
       </div>
 
-      {/* New insight cards */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {insightCards.map((card) => (
           <div key={card.label} className="rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">

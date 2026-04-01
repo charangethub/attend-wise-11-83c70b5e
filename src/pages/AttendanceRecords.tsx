@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, getDaysInMonth } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -28,24 +28,32 @@ const AttendanceRecords = () => {
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return;
-      setLoading(true);
-      const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
-        supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
-      ]);
-      setStudents(stuRes.data ?? []);
-      setAttendance(attRes.data ?? []);
-      setLoading(false);
-    };
-    fetchData();
+  // ✅ FIX (Bug 3): useCallback for reuse in visibilitychange
+  const fetchData = useCallback(async () => {
+    if (!activeSlug) return;
+    setLoading(true);
+    const [stuRes, attRes] = await Promise.all([
+      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+      supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
+    ]);
+    setStudents(stuRes.data ?? []);
+    setAttendance(attRes.data ?? []);
+    setLoading(false);
   }, [monthStart, monthEnd, activeSlug]);
+
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // ✅ FIX (Bug 3): Refetch when user returns to this tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void fetchData();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
-  // Build a map: studentId -> day -> { AM?: status, PM?: status, amRemark?, pmRemark? }
   const attMap = useMemo(() => {
     const map: Record<string, Record<number, { AM?: string; PM?: string; amRemark?: string; pmRemark?: string }>> = {};
     attendance.forEach((a: any) => {
@@ -80,7 +88,7 @@ const AttendanceRecords = () => {
       else if (combined === "AB") ab++;
       else if (combined === "L") l++;
       else if (combined === "H") h++;
-      else half++; // P:A, P:L, A:P etc.
+      else half++;
     });
     const total = p + ab + l + h + half;
     return { p, ab, l, h, half, total, pct: total > 0 ? Math.round((p / total) * 100) : 0 };
@@ -108,7 +116,10 @@ const AttendanceRecords = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4"><div><h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h2><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div><Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button></div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div><h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h2><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
+        <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v))}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent>{months.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}</SelectContent></Select>
         <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v))}><SelectTrigger className="w-24"><SelectValue /></SelectTrigger><SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent></Select>
@@ -117,7 +128,6 @@ const AttendanceRecords = () => {
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
 
-      {/* Legend */}
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
         <span className="font-medium text-muted-foreground">Legend:</span>
         <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Full Day Present</span>
@@ -130,37 +140,51 @@ const AttendanceRecords = () => {
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
         <TooltipProvider>
           <div className="rounded-lg border border-border overflow-auto">
-            <table className="text-xs w-max min-w-full"><thead className="sticky top-0 z-20"><tr className="bg-muted/80 backdrop-blur"><th className="sticky left-0 z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th><th className="sticky left-[80px] z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th><th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th><th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th><th className="px-2 py-2 text-left font-semibold min-w-[140px]">Classroom</th><th className="px-2 py-2 text-center font-semibold min-w-[70px]">Status</th>{Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="px-1.5 py-2 text-center font-semibold min-w-[32px]">{String(i + 1).padStart(2, "0")}</th>)}</tr></thead>
-              <tbody>{filteredStudents.map((s: any, idx: number) => {
-                const days = attMap[s.id] || {};
-                return (
-                  <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
-                    <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
-                    <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
-                    <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px]">{s.classroom_name}</td>
-                    <td className="px-2 py-1.5 text-center"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
-                    {Array.from({ length: daysInMonth }, (_, i) => {
-                      const d = days[i + 1];
-                      const combined = d ? getCombinedStatus(d.AM, d.PM) : "";
-                      const remarkText = d?.amRemark || d?.pmRemark ? `AM: ${d.amRemark || "—"}\nPM: ${d.pmRemark || "—"}` : "";
-                      return (
-                        <td key={i} className={`px-1 py-1.5 text-center font-semibold ${combined ? getCombinedStatusColor(combined) : ""}`}>
-                          {combined ? (
-                            remarkText ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild><span className="cursor-help underline decoration-dotted">{combined}</span></TooltipTrigger>
-                                <TooltipContent className="max-w-[200px] whitespace-pre-line text-xs">{remarkText}</TooltipContent>
-                              </Tooltip>
-                            ) : combined
-                          ) : <span className="text-muted-foreground/30">-</span>}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}</tbody></table>
+            <table className="text-xs w-max min-w-full">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-muted/80 backdrop-blur">
+                  <th className="sticky left-0 z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th>
+                  <th className="sticky left-[80px] z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th>
+                  <th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th>
+                  <th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th>
+                  <th className="px-2 py-2 text-left font-semibold min-w-[140px]">Classroom</th>
+                  <th className="px-2 py-2 text-center font-semibold min-w-[70px]">Status</th>
+                  {Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="px-1.5 py-2 text-center font-semibold min-w-[32px]">{String(i + 1).padStart(2, "0")}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((s: any, idx: number) => {
+                  const days = attMap[s.id] || {};
+                  return (
+                    <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+                      <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
+                      <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
+                      <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
+                      <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
+                      <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px]">{s.classroom_name}</td>
+                      <td className="px-2 py-1.5 text-center"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
+                      {Array.from({ length: daysInMonth }, (_, i) => {
+                        const d = days[i + 1];
+                        const combined = d ? getCombinedStatus(d.AM, d.PM) : "";
+                        const remarkText = d?.amRemark || d?.pmRemark ? `AM: ${d.amRemark || "—"}\nPM: ${d.pmRemark || "—"}` : "";
+                        return (
+                          <td key={i} className={`px-1 py-1.5 text-center font-semibold ${combined ? getCombinedStatusColor(combined) : ""}`}>
+                            {combined ? (
+                              remarkText ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild><span className="cursor-help underline decoration-dotted">{combined}</span></TooltipTrigger>
+                                  <TooltipContent className="max-w-[200px] whitespace-pre-line text-xs">{remarkText}</TooltipContent>
+                                </Tooltip>
+                              ) : combined
+                            ) : <span className="text-muted-foreground/30">-</span>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </TooltipProvider>
       )}

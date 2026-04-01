@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 type UseActiveDatasetResult = {
@@ -8,37 +8,56 @@ type UseActiveDatasetResult = {
   refetch: () => void;
 };
 
-let cachedSlug: string | null = null;
-let cachedName: string | null = null;
-
 export function useActiveDataset(): UseActiveDatasetResult {
-  const [activeSlug, setActiveSlug] = useState<string>(cachedSlug || "master_list_adilabad");
-  const [activeName, setActiveName] = useState<string>(cachedName || "Students");
-  const [loading, setLoading] = useState(!cachedSlug);
+  const [activeSlug, setActiveSlug] = useState<string>("master_list_adilabad");
+  const [activeName, setActiveName] = useState<string>("Students");
+  const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
-  const fetched = useRef(!!cachedSlug);
+
+  const fetchDS = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("student_datasets")
+      .select("slug, name")
+      .eq("is_active", true)
+      .limit(1)
+      .single();
+    if (!error && data) {
+      setActiveSlug((data as any).slug);
+      setActiveName((data as any).name);
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (fetched.current && tick === 0) return;
-    const fetchDS = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("student_datasets")
-        .select("slug, name")
-        .eq("is_active", true)
-        .limit(1)
-        .single();
-      if (!error && data) {
-        cachedSlug = (data as any).slug;
-        cachedName = (data as any).name;
-        setActiveSlug(cachedSlug!);
-        setActiveName(cachedName!);
-      }
-      fetched.current = true;
-      setLoading(false);
-    };
-    fetchDS();
-  }, [tick]);
+    void fetchDS();
+  }, [fetchDS, tick]);
 
-  return { activeSlug, activeName, loading, refetch: () => setTick(t => t + 1) };
+  useEffect(() => {
+    const channel = supabase
+      .channel("dataset-active-change")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "student_datasets",
+        },
+        () => {
+          void fetchDS();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchDS]);
+
+  return {
+    activeSlug,
+    activeName,
+    loading,
+    refetch: () => setTick((t) => t + 1),
+  };
 }

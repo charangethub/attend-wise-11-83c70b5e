@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -33,10 +33,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [pageAccess, setPageAccess] = useState<PageAccessMap | null>(null);
   const [adminPanelAccess, setAdminPanelAccess] = useState(false);
 
+  const initialLoadDoneRef = useRef(false);
+
   useEffect(() => {
     const clearMeta = () => {
-      setUserRole(null); setUserStatus(null);
-      setPageAccess(null); setAdminPanelAccess(false);
+      setUserRole(null);
+      setUserStatus(null);
+      setPageAccess(null);
+      setAdminPanelAccess(false);
     };
 
     const fetchUserMeta = async (userId: string) => {
@@ -59,24 +63,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const hydrate = async (nextSession: Session | null) => {
-      setLoading(true);
+      const isFirst = !initialLoadDoneRef.current;
+      if (isFirst) setLoading(true);
+
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-      if (nextSession?.user) { await fetchUserMeta(nextSession.user.id); } else { clearMeta(); }
-      setLoading(false);
+      if (nextSession?.user) {
+        await fetchUserMeta(nextSession.user.id);
+      } else {
+        clearMeta();
+      }
+
+      if (isFirst) {
+        initialLoadDoneRef.current = true;
+        setLoading(false);
+      }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      void hydrate(nextSession);
-    });
-    supabase.auth.getSession().then(({ data: { session } }) => { void hydrate(session); });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, nextSession) => {
+        void hydrate(nextSession);
+      }
+    );
+
     return () => subscription.unsubscribe();
   }, []);
 
   const signOut = async () => { await supabase.auth.signOut(); };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, userStatus, pageAccess, adminPanelAccess, signOut }}>
+    <AuthContext.Provider
+      value={{ user, session, loading, userRole, userStatus, pageAccess, adminPanelAccess, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );
