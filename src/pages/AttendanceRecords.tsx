@@ -162,6 +162,7 @@ const AttendanceRecords = () => {
                   return (
                     <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                       <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
+                      {isOwner && <td className="px-2 py-1.5 text-muted-foreground text-[10px] font-mono truncate max-w-[90px]" title={s.user_id_vedantu}>{s.user_id_vedantu || "—"}</td>}
                       <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
                       <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
                       <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
