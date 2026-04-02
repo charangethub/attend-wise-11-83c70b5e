@@ -15,7 +15,7 @@ import { logActivity } from "@/hooks/useActivityLog";
 
 const AbsenteeDashboard = () => {
   const { user, userRole } = useAuth();
-  const { userRole } = useAuth();
+  const navigate = useNavigate();
   const { activeSlug } = useActiveDataset();
   const isAdminOrOwner = userRole === "owner" || userRole === "admin";
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
