@@ -43,9 +43,10 @@ const DashboardAnalytics = () => {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [fetchData]);
 
-  // ✅ FIX (Bug 2): Realtime subscription — dashboard updates when any user saves attendance
+  // Realtime subscription — debounced to avoid refetching on every single row change during bulk saves
   useEffect(() => {
     if (!activeSlug) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel(`dashboard-attendance-live-${Date.now()}`)
       .on("postgres_changes", {
@@ -53,12 +54,15 @@ const DashboardAnalytics = () => {
         schema: "public",
         table: "attendance",
       }, () => {
-        // Silently refresh dashboard stats whenever attendance changes
-        void fetchData();
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => void fetchData(), 2000);
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, [activeSlug, fetchData]);
 
   // Build per-student combined status for today
