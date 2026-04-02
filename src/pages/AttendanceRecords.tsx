@@ -147,6 +147,7 @@ const AttendanceRecords = () => {
               <thead className="sticky top-0 z-20">
                 <tr className="bg-muted/80 backdrop-blur">
                   <th className="sticky left-0 z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th>
+                  {isOwner && <th className="px-2 py-2 text-left font-semibold min-w-[90px]">User ID</th>}
                   <th className="sticky left-[80px] z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th>
                   <th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th>
                   <th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th>
