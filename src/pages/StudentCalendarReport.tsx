@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from "date-fns";
 import { Button } from "@/components/ui/button";

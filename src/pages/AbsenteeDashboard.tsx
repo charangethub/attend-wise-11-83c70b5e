@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
 import RemarkDialog from "@/components/RemarkDialog";
+import { logActivity } from "@/hooks/useActivityLog";
 
 const AbsenteeDashboard = () => {
   const navigate = useNavigate();

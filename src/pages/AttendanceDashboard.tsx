@@ -172,13 +172,28 @@ const AttendanceDashboard = () => {
   useEffect(() => { loadedDraftKeyRef.current = null; }, [draftStorageKey]);
   useEffect(() => { draftKeyForCleanupRef.current = draftStorageKey; }, [draftStorageKey]);
 
-  // Cleanup draft on unmount (only fires when navigating away, not on token refresh — thanks to ProtectedRoute fix)
+  // Cleanup draft on unmount (navigating away within app)
   useEffect(() => {
     return () => {
       if (draftKeyForCleanupRef.current) {
         sessionStorage.removeItem(draftKeyForCleanupRef.current);
       }
     };
+  }, []);
+
+  // Clear drafts on actual page refresh (F5) so unsaved marks are erased
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      // Clear all att-draft keys from sessionStorage on page refresh
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith("att-draft:")) keysToRemove.push(key);
+      }
+      keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, []);
 
   // ─── Draft persistence ───────────────────────────────────────────────────────
