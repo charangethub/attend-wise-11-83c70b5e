@@ -36,7 +36,7 @@ const AttendanceRecords = () => {
     if (!activeSlug) return;
     setLoading(true);
     const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu").neq("roll_no", "").eq("dataset", activeSlug),
       supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
     ]);
     setStudents(stuRes.data ?? []);
