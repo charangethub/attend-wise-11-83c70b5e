@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, BarChart3, Search } from "lucide-react";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { useAuth } from "@/contexts/AuthContext";
 import { getCombinedStatus, getCombinedStatusColor } from "@/lib/attendanceSession";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
