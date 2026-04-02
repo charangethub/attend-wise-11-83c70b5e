@@ -24,6 +24,8 @@ const AttendanceRecords = () => {
   const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
   const { activeSlug } = useActiveDataset();
+  const { userRole } = useAuth();
+  const isOwner = userRole === "owner";
 
   const daysInMonth = getDaysInMonth(new Date(year, month));
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
