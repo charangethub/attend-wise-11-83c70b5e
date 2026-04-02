@@ -103,11 +103,11 @@ const AttendanceRecords = () => {
 
   const exportCSV = () => {
     const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, "0"));
-    const headers = ["Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
+    const headers = ["Roll No", "User ID", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
     const rows = filteredStudents.map((s: any) => {
       const days = attMap[s.id] || {};
       const sum = getStudentSummary(s.id);
-      return [s.roll_no, s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
+      return [s.roll_no, s.user_id_vedantu || "", s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
         ...dayHeaders.map((_, i) => { const d = days[i + 1]; return d ? getCombinedStatus(d.AM, d.PM) : ""; }),
         sum.p, sum.ab, sum.l, sum.h, sum.half, sum.total, sum.pct];
     });
