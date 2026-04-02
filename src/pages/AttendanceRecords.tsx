@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, BarChart3, Search } from "lucide-react";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { useAuth } from "@/contexts/AuthContext";
 import { getCombinedStatus, getCombinedStatusColor } from "@/lib/attendanceSession";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -23,6 +24,8 @@ const AttendanceRecords = () => {
   const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
   const { activeSlug } = useActiveDataset();
+  const { userRole } = useAuth();
+  const isOwner = userRole === "owner";
 
   const daysInMonth = getDaysInMonth(new Date(year, month));
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
@@ -33,7 +36,7 @@ const AttendanceRecords = () => {
     if (!activeSlug) return;
     setLoading(true);
     const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
+      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu").neq("roll_no", "").eq("dataset", activeSlug),
       supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
     ]);
     setStudents(stuRes.data ?? []);
@@ -100,11 +103,11 @@ const AttendanceRecords = () => {
 
   const exportCSV = () => {
     const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, "0"));
-    const headers = ["Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
+    const headers = ["Roll No", "User ID", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
     const rows = filteredStudents.map((s: any) => {
       const days = attMap[s.id] || {};
       const sum = getStudentSummary(s.id);
-      return [s.roll_no, s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
+      return [s.roll_no, s.user_id_vedantu || "", s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
         ...dayHeaders.map((_, i) => { const d = days[i + 1]; return d ? getCombinedStatus(d.AM, d.PM) : ""; }),
         sum.p, sum.ab, sum.l, sum.h, sum.half, sum.total, sum.pct];
     });
@@ -144,6 +147,7 @@ const AttendanceRecords = () => {
               <thead className="sticky top-0 z-20">
                 <tr className="bg-muted/80 backdrop-blur">
                   <th className="sticky left-0 z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th>
+                  {isOwner && <th className="px-2 py-2 text-left font-semibold min-w-[90px]">User ID</th>}
                   <th className="sticky left-[80px] z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th>
                   <th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th>
                   <th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th>
@@ -158,6 +162,7 @@ const AttendanceRecords = () => {
                   return (
                     <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                       <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
+                      {isOwner && <td className="px-2 py-1.5 text-muted-foreground text-[10px] font-mono truncate max-w-[90px]" title={s.user_id_vedantu}>{s.user_id_vedantu || "—"}</td>}
                       <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
                       <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
                       <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
