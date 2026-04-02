@@ -14,7 +14,7 @@ import RemarkDialog from "@/components/RemarkDialog";
 import { logActivity } from "@/hooks/useActivityLog";
 
 const AbsenteeDashboard = () => {
-  const navigate = useNavigate();
+  const { user, userRole } = useAuth();
   const { userRole } = useAuth();
   const { activeSlug } = useActiveDataset();
   const isAdminOrOwner = userRole === "owner" || userRole === "admin";

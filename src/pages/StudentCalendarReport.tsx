@@ -45,20 +45,28 @@ const StudentCalendarReport = () => {
   const monthStart = format(startOfMonth(currentDate), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(currentDate), "yyyy-MM-dd");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return;
-      setLoading(true);
-      const [stuRes, attRes] = await Promise.all([
-        supabase.from("students").select("id, roll_no, student_name, classroom_name, enrollment_status, grade").neq("roll_no", "").eq("dataset", activeSlug),
-        supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd),
-      ]);
-      setStudents(stuRes.data ?? []);
-      setAttendance(attRes.data ?? []);
-      setLoading(false);
-    };
-    fetchData();
+  const fetchData = useCallback(async () => {
+    if (!activeSlug) return;
+    setLoading(true);
+    const [stuRes, attRes] = await Promise.all([
+      supabase.from("students").select("id, roll_no, student_name, classroom_name, enrollment_status, grade").neq("roll_no", "").eq("dataset", activeSlug),
+      supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd),
+    ]);
+    setStudents(stuRes.data ?? []);
+    setAttendance(attRes.data ?? []);
+    setLoading(false);
   }, [monthStart, monthEnd, activeSlug]);
+
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  // Refetch when user returns to this tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void fetchData();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
