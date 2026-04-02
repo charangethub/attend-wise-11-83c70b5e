@@ -101,6 +101,22 @@ const AbsenteeDashboard = () => {
       await supabase.from("attendance").update({ remark }).eq("student_id", studentId).eq("date", selectedDate);
       toast.success("Remark saved!");
       setAttendance(prev => prev.map(a => a.student_id === studentId ? { ...a, remark } : a));
+      
+      // Log remark activity in background
+      if (user) {
+        const student = students.find(s => s.id === studentId);
+        void logActivity({
+          userId: user.id,
+          userEmail: user.email ?? "",
+          userName: user.user_metadata?.full_name ?? user.email ?? "",
+          action: "absentee remark updated",
+          entityType: "attendance",
+          studentName: student?.student_name ?? "",
+          studentId,
+          details: { date: selectedDate, remark },
+        });
+      }
+      
       try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
     } catch { toast.error("Failed to save remark"); }
   };
