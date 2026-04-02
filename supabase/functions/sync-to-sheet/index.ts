@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
     // ✅ FIX 3: Include mobile_number and session in the attendance join
     const { data: attData } = await supabase
       .from('attendance')
-      .select('*, students(roll_no, student_name, classroom_name, curriculum, grade, center, mobile_number, emergency_contact_1, emergency_contact_2)')
+      .select('*, students(roll_no, student_name, classroom_name, curriculum, grade, center, mobile_number, emergency_contact_1, emergency_contact_2, user_id_vedantu)')
       .eq('date', date);
 
     // Filter attendance to active dataset students only
