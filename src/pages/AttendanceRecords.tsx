@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { format, getDaysInMonth } from "date-fns";
+import { getDaysInMonth } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,6 +8,8 @@ import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCombinedStatus, getCombinedStatusColor } from "@/lib/attendanceSession";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkTooltip } from "@/lib/attendanceData";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -31,29 +32,36 @@ const AttendanceRecords = () => {
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
-  // ✅ FIX (Bug 3): useCallback for reuse in visibilitychange
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
     setLoading(true);
-    const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu").neq("roll_no", "").eq("dataset", activeSlug),
-      supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd)
-    ]);
-    setStudents(stuRes.data ?? []);
-    setAttendance(attRes.data ?? []);
-    setLoading(false);
+
+    try {
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu");
+      const attendanceRows = await fetchAttendanceForStudents<any>({
+        columns: "student_id, date, status, session, remark",
+        studentIds: studentRows.map((student) => student.id),
+        fromDate: monthStart,
+        toDate: monthEnd,
+      });
+
+      setStudents(studentRows);
+      setAttendance(attendanceRows);
+    } finally {
+      setLoading(false);
+    }
   }, [monthStart, monthEnd, activeSlug]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  // ✅ FIX (Bug 3): Refetch when user returns to this tab
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void fetchData();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `attendance-records:${activeSlug}:${monthStart}`,
+    onRefresh: fetchData,
+    fromDate: monthStart,
+    toDate: monthEnd,
+    debounceMs: 500,
+  });
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
@@ -171,7 +179,7 @@ const AttendanceRecords = () => {
                       {Array.from({ length: daysInMonth }, (_, i) => {
                         const d = days[i + 1];
                         const combined = d ? getCombinedStatus(d.AM, d.PM) : "";
-                        const remarkText = d?.amRemark || d?.pmRemark ? `AM: ${d.amRemark || "—"}\nPM: ${d.pmRemark || "—"}` : "";
+                        const remarkText = getSessionRemarkTooltip(d?.amRemark, d?.pmRemark);
                         return (
                           <td key={i} className={`px-1 py-1.5 text-center font-semibold ${combined ? getCombinedStatusColor(combined) : ""}`}>
                             {combined ? (

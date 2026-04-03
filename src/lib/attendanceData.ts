@@ -62,6 +62,9 @@ export async function fetchAttendanceForStudents<T = any>({
           .from("attendance")
           .select(columns)
           .in("student_id", idChunk)
+          .order("date", { ascending: true })
+          .order("student_id", { ascending: true })
+          .order("session", { ascending: true })
           .range(from, from + ATTENDANCE_PAGE_SIZE - 1);
 
         if (exactDate) query = query.eq("date", exactDate);

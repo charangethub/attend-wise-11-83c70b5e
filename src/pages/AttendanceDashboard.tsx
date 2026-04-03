@@ -12,6 +12,8 @@ import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { logActivity } from "@/hooks/useActivityLog";
 import RemarkDialog from "@/components/RemarkDialog";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 type AttendanceDraft = { attendance: Record<string, string>; remarks: Record<string, string> };
@@ -73,14 +75,17 @@ const AttendanceDashboard = () => {
     if (!activeSlug || !draftStorageKey) return;
     if (!preserveUserChanges) setLoading(true);
 
-    const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
-      supabase.from("attendance").select("student_id, status, remark, session").eq("date", selectedDate).eq("session", selectedSession),
-    ]);
+    const studentRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status");
+    const attendanceRows = await fetchAttendanceForStudents<any>({
+      columns: "student_id, status, remark, session",
+      studentIds: studentRows.map((student) => student.id),
+      exactDate: selectedDate,
+      session: selectedSession,
+    });
 
     const serverAttendance: Record<string, string> = {};
     const serverRemarks: Record<string, string> = {};
-    (attRes.data ?? []).forEach((a: any) => {
+    attendanceRows.forEach((a: any) => {
       serverAttendance[a.student_id] = a.status;
       serverRemarks[a.student_id] = a.remark || "";
     });
@@ -88,7 +93,7 @@ const AttendanceDashboard = () => {
     if (!preserveUserChanges) {
       // Normal load: apply draft or server data
       const draft = readSessionJson<AttendanceDraft | null>(draftStorageKey, null);
-      setStudents(stuRes.data ?? []);
+      setStudents(studentRows);
       setAttendance(draft?.attendance ?? serverAttendance);
       setOriginalAttendance(serverAttendance);
       setRemarks(draft?.remarks ?? serverRemarks);
@@ -98,7 +103,7 @@ const AttendanceDashboard = () => {
     } else {
       // ✅ FIX (Bug 2): Realtime update — preserve current user's unsaved changes.
       // Only update students where the current user has NOT locally modified them.
-      setStudents(stuRes.data ?? []);
+      setStudents(studentRows);
       setOriginalAttendance(serverAttendance);
       setOriginalRemarks(serverRemarks);
 
@@ -128,38 +133,14 @@ const AttendanceDashboard = () => {
     void fetchAttendanceData(false);
   }, [selectedDate, activeSlug, selectedSession, draftStorageKey]);
 
-  // ─── FIX (Bug 2): Supabase Realtime — universal attendance updates ──────────
-  // When any user saves attendance for this date+session, all other users
-  // see the update within ~1 second without needing to refresh.
-  useEffect(() => {
-    if (!selectedDate || !selectedSession) return;
-
-    const channelName = `attendance-live:${selectedDate}:${selectedSession}:${Date.now()}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",           // INSERT, UPDATE, DELETE
-          schema: "public",
-          table: "attendance",
-        },
-        async (payload: any) => {
-          // Only process events for the date+session we're currently viewing
-          const rec = payload.new ?? payload.old ?? {};
-          if (rec.date && rec.date !== selectedDate) return;
-          if (rec.session && rec.session !== selectedSession) return;
-
-          // Silently refresh attendance while preserving user's unsaved changes
-          await fetchAttendanceData(true);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [selectedDate, selectedSession, fetchAttendanceData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug && selectedDate && selectedSession),
+    channelKey: `attendance-live:${activeSlug}:${selectedDate}:${selectedSession}`,
+    onRefresh: () => fetchAttendanceData(true),
+    exactDate: selectedDate,
+    session: selectedSession,
+    debounceMs: 500,
+  });
 
   // ─── Persist sessionStorage filters ─────────────────────────────────────────
   useEffect(() => { localStorage.setItem("att-view", viewMode); }, [viewMode]);

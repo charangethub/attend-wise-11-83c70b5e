@@ -6,6 +6,8 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { getCombinedStatus } from "@/lib/attendanceSession";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
 const DailyAttendanceReport = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -15,29 +17,35 @@ const DailyAttendanceReport = () => {
   const { data: settings } = useSystemSettings();
   const { activeSlug } = useActiveDataset();
 
-  // ✅ FIX (Bug 3): useCallback so fetchData can be used in visibilitychange listener
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
+
     setLoading(true);
-    const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, classroom_name, enrollment_status, center").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
-      supabase.from("attendance").select("student_id, status, session").eq("date", selectedDate)
-    ]);
-    setStudents(stuRes.data ?? []);
-    setAttendance(attRes.data ?? []);
-    setLoading(false);
+
+    try {
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status, center", { onlyEnrolled: true });
+      const attendanceRows = await fetchAttendanceForStudents<any>({
+        columns: "student_id, status, session",
+        studentIds: studentRows.map((student) => student.id),
+        exactDate: selectedDate,
+      });
+
+      setStudents(studentRows);
+      setAttendance(attendanceRows);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedDate, activeSlug]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  // ✅ FIX (Bug 3): Refetch when user returns to this tab
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void fetchData();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `daily-report:${activeSlug}:${selectedDate}`,
+    onRefresh: fetchData,
+    exactDate: selectedDate,
+    debounceMs: 500,
+  });
 
   const dynamicCenter = useMemo(() => {
     if (settings?.center_name) return settings.center_name;

@@ -5,6 +5,8 @@ import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus, AlertCircle, BarCh
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus } from "@/lib/attendanceSession";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
 const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Half: "hsl(25, 95%, 53%)", Unmarked: "hsl(30, 15%, 70%)" };
 
@@ -14,56 +16,41 @@ const DashboardAnalytics = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
+  const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
   const { activeSlug } = useActiveDataset();
 
-  // ✅ FIX (Bug 3): useCallback for reuse in visibilitychange + Realtime
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
+
     setLoading(true);
-    const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
-    const [attRes, stuRes, allAttRes] = await Promise.all([
-      supabase.from("attendance").select("student_id, status, session").eq("date", today),
-      supabase.from("students").select("id, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug),
-      supabase.from("attendance").select("student_id, status, session, date").gte("date", weekAgo).lte("date", today),
-    ]);
-    setAttendance(attRes.data ?? []);
-    setStudents(stuRes.data ?? []);
-    setAllAttendance(allAttRes.data ?? []);
-    setLoading(false);
-  }, [today, activeSlug]);
+
+    try {
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status");
+      const studentIds = studentRows.map((student) => student.id);
+
+      const [todayAttendance, weekAttendance] = await Promise.all([
+        fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, exactDate: today }),
+        fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, fromDate: weekAgo, toDate: today }),
+      ]);
+
+      setStudents(studentRows);
+      setAttendance(todayAttendance);
+      setAllAttendance(weekAttendance);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeSlug, today, weekAgo]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  // ✅ FIX (Bug 3): Refetch when user returns to this tab
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void fetchData();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchData]);
-
-  // Realtime subscription — debounced to avoid refetching on every single row change during bulk saves
-  useEffect(() => {
-    if (!activeSlug) return;
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    const channel = supabase
-      .channel(`dashboard-attendance-live-${Date.now()}`)
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "attendance",
-      }, () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => void fetchData(), 2000);
-      })
-      .subscribe();
-
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      supabase.removeChannel(channel);
-    };
-  }, [activeSlug, fetchData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `dashboard-attendance-live:${activeSlug}:${today}`,
+    onRefresh: fetchData,
+    fromDate: weekAgo,
+    toDate: today,
+    debounceMs: 800,
+  });
 
   // Build per-student combined status for today
   const attMap = useMemo(() => {

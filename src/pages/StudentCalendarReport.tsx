@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChevronLeft, ChevronRight, Search, CalendarDays } from "lucide-react";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus } from "@/lib/attendanceSession";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents, getCombinedRemarkText } from "@/lib/attendanceData";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -47,26 +49,35 @@ const StudentCalendarReport = () => {
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
+
     setLoading(true);
-    const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, classroom_name, enrollment_status, grade").neq("roll_no", "").eq("dataset", activeSlug),
-      supabase.from("attendance").select("student_id, date, status, session, remark").gte("date", monthStart).lte("date", monthEnd),
-    ]);
-    setStudents(stuRes.data ?? []);
-    setAttendance(attRes.data ?? []);
-    setLoading(false);
+
+    try {
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, roll_no, student_name, classroom_name, enrollment_status, grade");
+      const attendanceRows = await fetchAttendanceForStudents<any>({
+        columns: "student_id, date, status, session, remark",
+        studentIds: studentRows.map((student) => student.id),
+        fromDate: monthStart,
+        toDate: monthEnd,
+      });
+
+      setStudents(studentRows);
+      setAttendance(attendanceRows);
+    } finally {
+      setLoading(false);
+    }
   }, [monthStart, monthEnd, activeSlug]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  // Refetch when user returns to this tab
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) void fetchData();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `student-calendar:${activeSlug}:${monthStart}`,
+    onRefresh: fetchData,
+    fromDate: monthStart,
+    toDate: monthEnd,
+    debounceMs: 500,
+  });
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
@@ -201,7 +212,7 @@ const StudentCalendarReport = () => {
                 const dayOfWeek = getDay(day);
                 const isSunday = dayOfWeek === 0;
                 const displayStatus = combined || (isSunday ? "O" : "");
-                const remark = att?.amRemark || att?.pmRemark || "";
+                const remark = getCombinedRemarkText(att?.amRemark, att?.pmRemark);
 
                 return (
                   <div key={dateStr} className={`border-b border-r border-border min-h-[80px] p-1.5 ${isSunday && !combined ? "bg-gray-50" : "bg-card"}`}>
