@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,19 +7,20 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { SidebarLayout } from "@/components/SidebarLayout";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import PendingApproval from "./pages/PendingApproval";
-import Dashboard from "./pages/Dashboard";
-import AdminPanel from "./pages/AdminPanel";
-import AttendanceDashboard from "./pages/AttendanceDashboard";
-import AbsenteeDashboard from "./pages/AbsenteeDashboard";
-import AttendanceRecords from "./pages/AttendanceRecords";
-import DailyAttendanceReport from "./pages/DailyAttendanceReport";
-import NotFound from "./pages/NotFound";
-import StudentCalendarReport from "./pages/StudentCalendarReport";
+
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const PendingApproval = lazy(() => import("./pages/PendingApproval"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const AttendanceDashboard = lazy(() => import("./pages/AttendanceDashboard"));
+const AbsenteeDashboard = lazy(() => import("./pages/AbsenteeDashboard"));
+const AttendanceRecords = lazy(() => import("./pages/AttendanceRecords"));
+const DailyAttendanceReport = lazy(() => import("./pages/DailyAttendanceReport"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const StudentCalendarReport = lazy(() => import("./pages/StudentCalendarReport"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,6 +31,12 @@ const queryClient = new QueryClient({
   },
 });
 
+const RouteLoader = () => (
+  <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -36,22 +44,24 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><SidebarLayout><Dashboard /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute requiredRole={["owner"]}><SidebarLayout><AdminPanel /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/attendance" element={<ProtectedRoute requiredPage="Mark Attendance"><SidebarLayout><AttendanceDashboard /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/absentees" element={<ProtectedRoute requiredPage="Absentee Report"><SidebarLayout><AbsenteeDashboard /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/records" element={<ProtectedRoute requiredPage="Attendance Records"><SidebarLayout><AttendanceRecords /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/daily-report" element={<ProtectedRoute requiredPage="Daily Report"><SidebarLayout><DailyAttendanceReport /></SidebarLayout></ProtectedRoute>} />
-            <Route path="/student-calendar" element={<ProtectedRoute requiredPage="Student Calendar"><SidebarLayout><StudentCalendarReport /></SidebarLayout></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <Suspense fallback={<RouteLoader />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/pending-approval" element={<ProtectedRoute><PendingApproval /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><SidebarLayout><Dashboard /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/admin" element={<ProtectedRoute requiredRole={["owner"]}><SidebarLayout><AdminPanel /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/attendance" element={<ProtectedRoute requiredPage="Mark Attendance"><SidebarLayout><AttendanceDashboard /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/absentees" element={<ProtectedRoute requiredPage="Absentee Report"><SidebarLayout><AbsenteeDashboard /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/records" element={<ProtectedRoute requiredPage="Attendance Records"><SidebarLayout><AttendanceRecords /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/daily-report" element={<ProtectedRoute requiredPage="Daily Report"><SidebarLayout><DailyAttendanceReport /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/student-calendar" element={<ProtectedRoute requiredPage="Student Calendar"><SidebarLayout><StudentCalendarReport /></SidebarLayout></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

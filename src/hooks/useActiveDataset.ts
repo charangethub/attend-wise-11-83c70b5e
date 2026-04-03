@@ -9,7 +9,7 @@ type UseActiveDatasetResult = {
 };
 
 export function useActiveDataset(): UseActiveDatasetResult {
-  const [activeSlug, setActiveSlug] = useState<string>("master_list_adilabad");
+  const [activeSlug, setActiveSlug] = useState<string>("");
   const [activeName, setActiveName] = useState<string>("Students");
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
@@ -22,10 +22,15 @@ export function useActiveDataset(): UseActiveDatasetResult {
       .eq("is_active", true)
       .limit(1)
       .single();
+
     if (!error && data) {
       setActiveSlug((data as any).slug);
       setActiveName((data as any).name);
+    } else {
+      setActiveSlug("");
+      setActiveName("Students");
     }
+
     setLoading(false);
   }, []);
 
