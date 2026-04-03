@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, subMonths, addMonths, isFuture } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Users } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from "recharts";
-import { useActiveDataset } from "@/hooks/useActiveDataset"; // ✅ FIX: import dataset hook
+import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
 const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)" };
 
@@ -13,38 +14,70 @@ const MonthlyAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { activeSlug } = useActiveDataset(); // ✅ FIX: get active dataset slug
+  const { activeSlug } = useActiveDataset();
 
   const monthStart = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!activeSlug) return; // ✅ FIX: wait for slug to load
+  const fetchData = useCallback(async () => {
+      if (!activeSlug) return;
+
       setLoading(true);
-      const [attRes, stuRes] = await Promise.all([
-        supabase.from("attendance").select("student_id, status, date").gte("date", monthStart).lte("date", monthEnd),
-        supabase.from("students").select("id, classroom_name").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug), // ✅ FIX: filter by active dataset
-      ]);
-      setAttendance(attRes.data ?? []);
-      setStudents(stuRes.data ?? []);
-      setLoading(false);
-    };
-    fetchData();
-  }, [monthStart, monthEnd, activeSlug]); // ✅ FIX: re-fetch when dataset changes
+
+      try {
+        const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name", { onlyEnrolled: true });
+        const studentIds = studentRows.map((student) => student.id);
+        const attendanceRows = await fetchAttendanceForStudents<any>({
+          columns: "student_id, status, date",
+          studentIds,
+          fromDate: monthStart,
+          toDate: monthEnd,
+        });
+
+        setStudents(studentRows);
+        setAttendance(attendanceRows);
+      } finally {
+        setLoading(false);
+      }
+    }, [activeSlug, monthEnd, monthStart]);
+
+  useEffect(() => { void fetchData(); }, [fetchData]);
+
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `monthly-analytics:${activeSlug}:${monthStart}`,
+    onRefresh: fetchData,
+    fromDate: monthStart,
+    toDate: monthEnd,
+    debounceMs: 800,
+  });
+
+  const attendanceByDate = useMemo(() => {
+    const map: Record<string, { P: number; AB: number; L: number }> = {};
+
+    attendance.forEach((entry) => {
+      const key = entry.date;
+      if (!map[key]) map[key] = { P: 0, AB: 0, L: 0 };
+      if (entry.status === "P") map[key].P++;
+      else if (entry.status === "AB") map[key].AB++;
+      else if (entry.status === "L") map[key].L++;
+    });
+
+    return map;
+  }, [attendance]);
 
   const dailyTrend = useMemo(() => {
     const days = eachDayOfInterval({ start: startOfMonth(currentMonth), end: endOfMonth(currentMonth) });
     return days.filter((d) => !isFuture(d)).map((day) => {
       const dateStr = format(day, "yyyy-MM-dd");
-      const dayAtt = attendance.filter((a) => a.date === dateStr);
-      const p = dayAtt.filter((a) => a.status === "P").length;
-      const ab = dayAtt.filter((a) => a.status === "AB").length;
-      const l = dayAtt.filter((a) => a.status === "L").length;
+      const counts = attendanceByDate[dateStr] ?? { P: 0, AB: 0, L: 0 };
+      const p = counts.P;
+      const ab = counts.AB;
+      const l = counts.L;
       const total = p + ab + l;
       return { date: format(day, "dd"), fullDate: format(day, "dd MMM"), Present: p, Absent: ab, Leave: l, total, presentPct: total ? Math.round((p / total) * 100) : 0 };
     });
-  }, [attendance, currentMonth]);
+  }, [attendanceByDate, currentMonth]);
 
   const monthlySummary = useMemo(() => {
     const p = attendance.filter((a) => a.status === "P").length;
@@ -55,12 +88,16 @@ const MonthlyAnalytics = () => {
     return { total, present: p, absent: ab, leave: l, daysTracked: daysWithData, avgPresent: total ? Math.round((p / total) * 100) : 0, avgAbsent: total ? Math.round((ab / total) * 100) : 0, avgLeave: total ? Math.round((l / total) * 100) : 0 };
   }, [attendance]);
 
+  const studentClassroomMap = useMemo(
+    () => new Map(students.map((student) => [student.id, student.classroom_name || "Unknown"])),
+    [students],
+  );
+
   const classroomMonthly = useMemo(() => {
     const map: Record<string, { P: number; AB: number; L: number; total: number }> = {};
     students.forEach((s) => { const n = s.classroom_name || "Unknown"; if (!map[n]) map[n] = { P: 0, AB: 0, L: 0, total: 0 }; });
     attendance.forEach((a) => {
-      const stu = students.find((s) => s.id === a.student_id);
-      const n = stu?.classroom_name || "Unknown";
+      const n = studentClassroomMap.get(a.student_id) || "Unknown";
       if (!map[n]) map[n] = { P: 0, AB: 0, L: 0, total: 0 };
       map[n].total++;
       if (a.status === "P") map[n].P++;
@@ -73,7 +110,7 @@ const MonthlyAnalytics = () => {
       absentPct: d.total ? Math.round((d.AB / d.total) * 100) : 0,
       Present: d.P, Absent: d.AB, Leave: d.L, total: d.total,
     })).sort((a, b) => b.presentPct - a.presentPct);
-  }, [attendance, students]);
+  }, [attendance, studentClassroomMap, students]);
 
   if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
 

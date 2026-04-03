@@ -1,10 +1,18 @@
+import { Suspense, lazy } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
-import DashboardAnalytics from "@/components/DashboardAnalytics";
-import MonthlyAnalytics from "@/components/MonthlyAnalytics";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowUpRight, Clock } from "lucide-react";
 import { format } from "date-fns";
+
+const DashboardAnalytics = lazy(() => import("@/components/DashboardAnalytics"));
+const MonthlyAnalytics = lazy(() => import("@/components/MonthlyAnalytics"));
+
+const SectionLoader = () => (
+  <div className="flex justify-center py-12">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
+);
 
 const Dashboard = () => {
   const { user, userRole } = useAuth();
@@ -68,9 +76,13 @@ const Dashboard = () => {
         </div>
       )}
 
-      <DashboardAnalytics />
+      <Suspense fallback={<SectionLoader />}>
+        <DashboardAnalytics />
+      </Suspense>
       <div className="mt-8 border-t border-border pt-8">
-        <MonthlyAnalytics />
+        <Suspense fallback={<SectionLoader />}>
+          <MonthlyAnalytics />
+        </Suspense>
       </div>
     </div>
   );

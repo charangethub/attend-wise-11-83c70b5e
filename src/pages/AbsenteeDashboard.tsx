@@ -12,6 +12,8 @@ import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
 import RemarkDialog from "@/components/RemarkDialog";
 import { logActivity } from "@/hooks/useActivityLog";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
+import { fetchAttendanceForStudents, fetchDatasetStudents, getCombinedRemarkText } from "@/lib/attendanceData";
 
 const AbsenteeDashboard = () => {
   const { user, userRole } = useAuth();
@@ -27,35 +29,41 @@ const AbsenteeDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
 
-  // ✅ FIX (Bug 3): Extracted fetchData into useCallback so it can be called
-  // both from useEffect and from the visibilitychange listener.
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
+
     setLoading(true);
-    const [stuRes, attRes] = await Promise.all([
-      supabase.from("students").select("id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status").neq("roll_no", "").eq("enrollment_status", "ENROLLED").eq("dataset", activeSlug),
-      supabase.from("attendance").select("id, student_id, status, remark, session").eq("date", selectedDate).in("status", ["AB", "L"])
-    ]);
-    setStudents(stuRes.data ?? []);
-    setAttendance(attRes.data ?? []);
-    setLoading(false);
+
+    try {
+      const studentRows = await fetchDatasetStudents<any>(
+        activeSlug,
+        "id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status",
+        { onlyEnrolled: true },
+      );
+      const attendanceRows = await fetchAttendanceForStudents<any>({
+        columns: "id, student_id, status, remark, session",
+        studentIds: studentRows.map((student) => student.id),
+        exactDate: selectedDate,
+        statuses: ["AB", "L"],
+      });
+
+      setStudents(studentRows);
+      setAttendance(attendanceRows);
+    } finally {
+      setLoading(false);
+    }
   }, [selectedDate, activeSlug]);
 
   // Initial load + reload when date/dataset changes
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  // ✅ FIX (Bug 3): Page Visibility API — refetch when user returns to this tab.
-  // If another teacher marked attendance while you were on a different page/tab,
-  // you'll see the updated absentee list as soon as you come back.
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        void fetchData();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [fetchData]);
+  useAttendanceAutoRefresh({
+    enabled: Boolean(activeSlug),
+    channelKey: `absentees:${activeSlug}:${selectedDate}`,
+    onRefresh: fetchData,
+    exactDate: selectedDate,
+    debounceMs: 500,
+  });
 
   // Build per-student combined status from AM/PM records
   const absentees = useMemo(() => {
@@ -83,7 +91,7 @@ const AbsenteeDashboard = () => {
         const combined = getCombinedStatus(amStatus, pmStatus);
         const remarkAM = sessions.AM?.remark || "";
         const remarkPM = sessions.PM?.remark || "";
-        const combinedRemark = [remarkAM, remarkPM].filter(Boolean).join(" | ");
+        const combinedRemark = getCombinedRemarkText(remarkAM, remarkPM);
         return { ...s, combined, amStatus, pmStatus, remarkAM, remarkPM, combinedRemark, sessions };
       })
       .filter((s) => {
@@ -98,12 +106,23 @@ const AbsenteeDashboard = () => {
 
   const handleSaveRemark = async (studentId: string, remark: string) => {
     try {
-      await supabase.from("attendance").update({ remark }).eq("student_id", studentId).eq("date", selectedDate);
+      const normalizedRemark = remark.trim();
+      const currentRemark = absentees.find((student) => student.id === studentId)?.combinedRemark?.trim() || "";
+
+      const { error } = await supabase
+        .from("attendance")
+        .update({ remark: normalizedRemark })
+        .eq("student_id", studentId)
+        .eq("date", selectedDate)
+        .in("status", ["AB", "L"]);
+
+      if (error) throw error;
+
       toast.success("Remark saved!");
-      setAttendance(prev => prev.map(a => a.student_id === studentId ? { ...a, remark } : a));
+      setAttendance(prev => prev.map(a => a.student_id === studentId && ["AB", "L"].includes(a.status) ? { ...a, remark: normalizedRemark } : a));
       
       // Log remark activity in background
-      if (user) {
+      if (user && currentRemark !== normalizedRemark) {
         const student = students.find(s => s.id === studentId);
         void logActivity({
           userId: user.id,
@@ -113,11 +132,11 @@ const AbsenteeDashboard = () => {
           entityType: "attendance",
           studentName: student?.student_name ?? "",
           studentId,
-          details: { date: selectedDate, remark },
+          details: { date: selectedDate, remark: normalizedRemark },
         });
       }
       
-      try { await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } }); } catch {}
+      void supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } });
     } catch { toast.error("Failed to save remark"); }
   };
 
