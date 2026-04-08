@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, MessageSquare } from "lucide-react";
+import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, Phone, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
-import RemarkDialog from "@/components/RemarkDialog";
+import CallLogDialog from "@/components/CallLogDialog";
 import { logActivity } from "@/hooks/useActivityLog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents, getCombinedRemarkText } from "@/lib/attendanceData";
@@ -23,16 +23,26 @@ const AbsenteeDashboard = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [callLogs, setCallLogs] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [remarkDialogStudent, setRemarkDialogStudent] = useState<any>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [callLogStudent, setCallLogStudent] = useState<any>(null);
+  const autoForwardedRef = useRef(false);
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
 
     setLoading(true);
+    autoForwardedRef.current = false;
 
     try {
       const studentRows = await fetchDatasetStudents<any>(
@@ -40,21 +50,41 @@ const AbsenteeDashboard = () => {
         "id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status",
         { onlyEnrolled: true },
       );
+      const studentIds = studentRows.map((s: any) => s.id);
       const attendanceRows = await fetchAttendanceForStudents<any>({
         columns: "id, student_id, status, remark, session",
-        studentIds: studentRows.map((student) => student.id),
+        studentIds,
         exactDate: selectedDate,
         statuses: ["AB", "L"],
       });
 
+      // Fetch call logs for selected date
+      const clMap: Record<string, any> = {};
+      if (studentIds.length > 0) {
+        const chunks: string[][] = [];
+        for (let i = 0; i < studentIds.length; i += 100) chunks.push(studentIds.slice(i, i + 100));
+        await Promise.all(
+          chunks.map(async (chunk) => {
+            const { data } = await supabase
+              .from("call_logs" as any)
+              .select("*")
+              .in("student_id", chunk)
+              .eq("absent_date", selectedDate);
+            (data as any[])?.forEach((row: any) => {
+              clMap[row.student_id] = row;
+            });
+          }),
+        );
+      }
+
       setStudents(studentRows);
       setAttendance(attendanceRows);
+      setCallLogs(clMap);
     } finally {
       setLoading(false);
     }
   }, [selectedDate, activeSlug]);
 
-  // Initial load + reload when date/dataset changes
   useEffect(() => { void fetchData(); }, [fetchData]);
 
   useAttendanceAutoRefresh({
@@ -64,6 +94,68 @@ const AbsenteeDashboard = () => {
     exactDate: selectedDate,
     debounceMs: 500,
   });
+
+  // Auto-forward call logs from previous days
+  useEffect(() => {
+    if (loading || autoForwardedRef.current || !user) return;
+
+    const absentStudentIds = new Set(attendance.map((a: any) => a.student_id));
+    const studentsWithoutLog = [...absentStudentIds].filter((id) => !callLogs[id]);
+
+    if (studentsWithoutLog.length === 0) {
+      autoForwardedRef.current = true;
+      return;
+    }
+
+    const autoForward = async () => {
+      autoForwardedRef.current = true;
+      const chunks: string[][] = [];
+      for (let i = 0; i < studentsWithoutLog.length; i += 100) chunks.push(studentsWithoutLog.slice(i, i + 100));
+
+      const toUpsert: any[] = [];
+
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          const { data } = await supabase
+            .from("call_logs" as any)
+            .select("student_id, call_status, absence_reason, comment, expected_return_date, absent_date")
+            .in("student_id", chunk)
+            .gte("expected_return_date", selectedDate)
+            .order("absent_date", { ascending: false })
+            .limit(chunk.length * 3);
+
+          const seen = new Set<string>();
+          (data as any[])?.forEach((row: any) => {
+            if (seen.has(row.student_id)) return;
+            seen.add(row.student_id);
+            toUpsert.push({
+              student_id: row.student_id,
+              absent_date: selectedDate,
+              call_status: row.call_status,
+              absence_reason: row.absence_reason,
+              comment: `[Auto-forwarded from ${row.absent_date}] ${row.comment || ""}`.trim(),
+              expected_return_date: row.expected_return_date,
+              created_by: user.id,
+            });
+          });
+        }),
+      );
+
+      if (toUpsert.length > 0) {
+        const { error } = await supabase
+          .from("call_logs" as any)
+          .upsert(toUpsert as any[], { onConflict: "student_id,absent_date" });
+
+        if (!error) {
+          const newMap = { ...callLogs };
+          toUpsert.forEach((row) => { newMap[row.student_id] = { ...row, _autoForwarded: true }; });
+          setCallLogs(newMap);
+        }
+      }
+    };
+
+    void autoForward();
+  }, [loading, attendance, callLogs, selectedDate, user]);
 
   // Build per-student combined status from AM/PM records
   const absentees = useMemo(() => {
@@ -80,8 +172,8 @@ const AbsenteeDashboard = () => {
       .filter((s) => studentAttMap.has(s.id))
       .filter((s) => classroomFilter === "all" || s.classroom_name === classroomFilter)
       .filter((s) => {
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
+        if (!debouncedSearch) return true;
+        const q = debouncedSearch.toLowerCase();
         return s.student_name.toLowerCase().includes(q) || s.roll_no.toLowerCase().includes(q);
       })
       .map((s) => {
@@ -92,53 +184,23 @@ const AbsenteeDashboard = () => {
         const remarkAM = sessions.AM?.remark || "";
         const remarkPM = sessions.PM?.remark || "";
         const combinedRemark = getCombinedRemarkText(remarkAM, remarkPM);
-        return { ...s, combined, amStatus, pmStatus, remarkAM, remarkPM, combinedRemark, sessions };
+        const cl = callLogs[s.id];
+        return {
+          ...s,
+          combined, amStatus, pmStatus, remarkAM, remarkPM, combinedRemark, sessions,
+          callLog: cl || null,
+          isAutoForwarded: cl?._autoForwarded || cl?.comment?.startsWith("[Auto-forwarded"),
+        };
       })
       .filter((s) => {
         if (statusFilter === "absent") return s.combined === "AB" || s.combined.includes("A");
-        if (statusFilter === "absent_no_remark") return !s.combinedRemark;
+        if (statusFilter === "absent_no_remark") return !s.callLog;
         return true;
       })
       .sort((a, b) => a.roll_no.localeCompare(b.roll_no));
-  }, [students, attendance, classroomFilter, searchQuery, statusFilter]);
+  }, [students, attendance, classroomFilter, debouncedSearch, statusFilter, callLogs]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
-
-  const handleSaveRemark = async (studentId: string, remark: string) => {
-    try {
-      const normalizedRemark = remark.trim();
-      const currentRemark = absentees.find((student) => student.id === studentId)?.combinedRemark?.trim() || "";
-
-      const { error } = await supabase
-        .from("attendance")
-        .update({ remark: normalizedRemark })
-        .eq("student_id", studentId)
-        .eq("date", selectedDate)
-        .in("status", ["AB", "L"]);
-
-      if (error) throw error;
-
-      toast.success("Remark saved!");
-      setAttendance(prev => prev.map(a => a.student_id === studentId && ["AB", "L"].includes(a.status) ? { ...a, remark: normalizedRemark } : a));
-      
-      // Log remark activity in background
-      if (user && currentRemark !== normalizedRemark) {
-        const student = students.find(s => s.id === studentId);
-        void logActivity({
-          userId: user.id,
-          userEmail: user.email ?? "",
-          userName: user.user_metadata?.full_name ?? user.email ?? "",
-          action: "absentee remark updated",
-          entityType: "attendance",
-          studentName: student?.student_name ?? "",
-          studentId,
-          details: { date: selectedDate, remark: normalizedRemark },
-        });
-      }
-      
-      void supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } });
-    } catch { toast.error("Failed to save remark"); }
-  };
 
   const maskNumber = (num: string) => { if (!num || num.length < 4) return "••••••••"; return "••••••" + num.slice(-4); };
   const makeWhatsAppUrl = (contactNum: string, studentName: string, rollNo: string, status: string) => {
@@ -150,18 +212,29 @@ const AbsenteeDashboard = () => {
 
   const exportCSV = () => {
     const headers = isAdminOrOwner
-      ? ["Roll No", "Student Name", "Grade", "Classroom", "Emergency Contact 1", "Emergency Contact 2", "AM", "PM", "Combined", "Remark"]
-      : ["Roll No", "Student Name", "Grade", "Classroom", "AM", "PM", "Combined", "Remark"];
+      ? ["Roll No", "Student Name", "Grade", "Classroom", "Emergency Contact 1", "Emergency Contact 2", "AM", "PM", "Combined", "Call Status", "Absence Reason", "Comment"]
+      : ["Roll No", "Student Name", "Grade", "Classroom", "AM", "PM", "Combined", "Call Status", "Absence Reason", "Comment"];
     const rows = absentees.map((s) => {
       const base = [s.roll_no, s.student_name, s.grade, s.classroom_name];
       if (isAdminOrOwner) base.push(s.emergency_contact_1 || "", s.emergency_contact_2 || "");
-      base.push(s.amStatus || "—", s.pmStatus || "—", s.combined, s.combinedRemark || "");
+      base.push(s.amStatus || "—", s.pmStatus || "—", s.combined);
+      base.push(s.callLog?.call_status || "—", s.callLog?.absence_reason || "—", s.callLog?.comment || "");
       return base;
     });
     const csv = [headers, ...rows].map((r) => r.map((c: string) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `absentees-${selectedDate}.csv`; a.click(); URL.revokeObjectURL(url);
+  };
+
+  const getCallStatusDisplay = (cl: any) => {
+    if (!cl) return <span className="text-xs text-muted-foreground">Pending</span>;
+    const colors: Record<string, string> = {
+      "Called": "bg-success/20 text-success",
+      "Not Reachable": "bg-warning/20 text-warning",
+      "Callback Scheduled": "bg-primary/20 text-primary",
+    };
+    return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${colors[cl.call_status] || "bg-muted text-muted-foreground"}`}>{cl.call_status}</span>;
   };
 
   return (
@@ -178,7 +251,7 @@ const AbsenteeDashboard = () => {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-muted-foreground" /><input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm" /></div>
         <Select value={classroomFilter} onValueChange={setClassroomFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Classrooms" /></SelectTrigger><SelectContent><SelectItem value="all">All Classrooms</SelectItem>{classrooms.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="absent">Absent</SelectItem><SelectItem value="absent_no_remark">Absent - No Remark</SelectItem></SelectContent></Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All" /></SelectTrigger><SelectContent><SelectItem value="all">All</SelectItem><SelectItem value="absent">Absent</SelectItem><SelectItem value="absent_no_remark">Absent - No Log</SelectItem></SelectContent></Select>
         <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
       {loading ? (
@@ -190,14 +263,13 @@ const AbsenteeDashboard = () => {
           <table className="w-full text-sm"><thead><tr className="bg-muted/50">
             <th className="px-4 py-2.5 text-left font-semibold">Roll No</th>
             <th className="px-4 py-2.5 text-left font-semibold">Student Name</th>
-            <th className="px-4 py-2.5 text-left font-semibold">Grade</th>
             <th className="px-4 py-2.5 text-left font-semibold">Classroom</th>
-            <th className="px-4 py-2.5 text-left font-semibold">Emergency Contact 1</th>
-            <th className="px-4 py-2.5 text-left font-semibold">Emergency Contact 2</th>
             <th className="px-4 py-2.5 text-center font-semibold">AM</th>
             <th className="px-4 py-2.5 text-center font-semibold">PM</th>
             <th className="px-4 py-2.5 text-center font-semibold">Status</th>
-            <th className="px-4 py-2.5 text-left font-semibold">Remark</th>
+            <th className="px-4 py-2.5 text-center font-semibold">Call Status</th>
+            <th className="px-4 py-2.5 text-left font-semibold">Reason</th>
+            <th className="px-4 py-2.5 text-center font-semibold">Action</th>
             <th className="px-4 py-2.5 text-center font-semibold">WhatsApp</th>
           </tr></thead>
             <tbody>{absentees.map((s, i) => {
@@ -213,27 +285,37 @@ const AbsenteeDashboard = () => {
                 <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                   <td className="px-4 py-2.5 font-medium">{s.roll_no}</td>
                   <td className="px-4 py-2.5 font-medium">{s.student_name}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{s.grade}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{s.classroom_name}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{ec1 ? (isAdminOrOwner ? ec1 : maskNumber(ec1)) : "—"}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{ec2 ? (isAdminOrOwner ? ec2 : maskNumber(ec2)) : "—"}</td>
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.amStatus)}</td>
                   <td className="px-4 py-2.5 text-center">{sessionBadge(s.pmStatus)}</td>
                   <td className="px-4 py-2.5 text-center"><span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${getCombinedStatusBadge(s.combined)}`}>{s.combined}</span></td>
-                  <td className="px-4 py-2.5">
-                    <button
-                      onClick={() => setRemarkDialogStudent(s)}
-                      className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2.5 py-1.5 text-xs transition-colors hover:bg-muted min-w-[150px]"
+                  <td className="px-4 py-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1">
+                      {getCallStatusDisplay(s.callLog)}
+                      {s.isAutoForwarded && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold text-warning" title="Auto-forwarded from a previous call log">
+                          <RefreshCw className="h-2.5 w-2.5" /> Auto
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{s.callLog?.absence_reason || "—"}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCallLogStudent(s)}
+                      className="text-xs"
                     >
-                      <MessageSquare className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="truncate">{s.combinedRemark || "Add remark..."}</span>
-                    </button>
+                      <Phone className="h-3 w-3 mr-1" />
+                      Update
+                    </Button>
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {wa1 && <a href={wa1} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-success" /></Button></a>}
                       {wa2 && <a href={wa2} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm" className="h-7 w-7 p-0"><MessageCircle className="h-3.5 w-3.5 text-primary" /></Button></a>}
-                      {!wa1 && !wa2 && <span className="text-xs text-muted-foreground">No number</span>}
+                      {!wa1 && !wa2 && <span className="text-xs text-muted-foreground">—</span>}
                     </div>
                   </td>
                 </tr>
@@ -242,19 +324,19 @@ const AbsenteeDashboard = () => {
           </table>
         </div>
       )}
-      {remarkDialogStudent && (
-        <RemarkDialog
-          open={!!remarkDialogStudent}
-          onOpenChange={(open) => { if (!open) setRemarkDialogStudent(null); }}
-          studentName={remarkDialogStudent.student_name}
-          rollNo={remarkDialogStudent.roll_no}
-          grade={remarkDialogStudent.grade}
-          classroom={remarkDialogStudent.classroom_name}
-          date={selectedDate}
-          currentRemark={remarkDialogStudent.combinedRemark || ""}
-          onSave={(remark) => {
-            handleSaveRemark(remarkDialogStudent.id, remark);
-            setRemarkDialogStudent(null);
+      {callLogStudent && (
+        <CallLogDialog
+          open={!!callLogStudent}
+          onOpenChange={(open) => { if (!open) setCallLogStudent(null); }}
+          studentId={callLogStudent.id}
+          studentName={callLogStudent.student_name}
+          rollNo={callLogStudent.roll_no}
+          classroom={callLogStudent.classroom_name}
+          absentDate={selectedDate}
+          existingLog={callLogStudent.callLog}
+          onSaved={() => {
+            setCallLogStudent(null);
+            void fetchData();
           }}
         />
       )}
