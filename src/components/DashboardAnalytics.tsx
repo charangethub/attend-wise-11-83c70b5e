@@ -13,6 +13,7 @@ const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92
 
 const DashboardAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [zeroYTDOpen, setZeroYTDOpen] = useState(false);
   const [allAttendance, setAllAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,11 +70,13 @@ const DashboardAnalytics = () => {
     return combined;
   }, [attendance]);
 
-  const zeroYTDCount = useMemo(() => {
+  const zeroYTDStudentIds = useMemo(() => {
     const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
     const studentsWithAttendance = new Set(allAttendance.filter(a => a.status === "P").map(a => a.student_id));
-    return [...enrolledIds].filter(id => !studentsWithAttendance.has(id)).length;
+    return [...enrolledIds].filter(id => !studentsWithAttendance.has(id));
   }, [students, allAttendance]);
+
+  const zeroYTDCount = zeroYTDStudentIds.length;
 
   const avgAttendancePct = useMemo(() => {
     const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
@@ -179,7 +182,11 @@ const DashboardAnalytics = () => {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {insightCards.map((card) => (
-          <div key={card.label} className="rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md">
+          <div
+            key={card.label}
+            className={`rounded-xl border border-border bg-card p-5 transition-shadow hover:shadow-md ${card.label === "Zero YTD Students" ? "cursor-pointer hover:border-primary/50" : ""}`}
+            onClick={card.label === "Zero YTD Students" ? () => setZeroYTDOpen(true) : undefined}
+          >
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm font-semibold text-foreground">{card.label}</p>
               <card.icon className={`h-5 w-5 ${card.color}`} />
@@ -189,6 +196,13 @@ const DashboardAnalytics = () => {
           </div>
         ))}
       </div>
+
+      <ZeroYTDModal
+        open={zeroYTDOpen}
+        onOpenChange={setZeroYTDOpen}
+        studentIds={zeroYTDStudentIds}
+        allStudents={students}
+      />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4">
