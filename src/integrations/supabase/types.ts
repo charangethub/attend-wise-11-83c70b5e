@@ -100,6 +100,53 @@ export type Database = {
           },
         ]
       }
+      call_logs: {
+        Row: {
+          absence_reason: string | null
+          absent_date: string
+          call_status: string
+          comment: string | null
+          created_at: string
+          created_by: string | null
+          expected_return_date: string | null
+          id: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          absence_reason?: string | null
+          absent_date: string
+          call_status: string
+          comment?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_date?: string | null
+          id?: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          absence_reason?: string | null
+          absent_date?: string
+          call_status?: string
+          comment?: string | null
+          created_at?: string
+          created_by?: string | null
+          expected_return_date?: string | null
+          id?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_access: {
         Row: {
           has_access: boolean
