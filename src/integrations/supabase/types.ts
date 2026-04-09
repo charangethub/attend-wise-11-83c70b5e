@@ -147,6 +147,142 @@ export type Database = {
           },
         ]
       }
+      distribution_status: {
+        Row: {
+          created_at: string | null
+          dataset: string | null
+          given_by: string | null
+          given_date: string | null
+          id: string
+          item_type: string
+          status: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dataset?: string | null
+          given_by?: string | null
+          given_date?: string | null
+          id?: string
+          item_type: string
+          status?: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dataset?: string | null
+          given_by?: string | null
+          given_date?: string | null
+          id?: string
+          item_type?: string
+          status?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "distribution_status_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_activity_logs: {
+        Row: {
+          action: string
+          changed_by: string | null
+          changed_by_name: string | null
+          created_at: string | null
+          id: string
+          item_id: string | null
+          item_name: string | null
+          notes: string | null
+          quantity_change: number | null
+        }
+        Insert: {
+          action: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          item_id?: string | null
+          item_name?: string | null
+          notes?: string | null
+          quantity_change?: number | null
+        }
+        Update: {
+          action?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          created_at?: string | null
+          id?: string
+          item_id?: string | null
+          item_name?: string | null
+          notes?: string | null
+          quantity_change?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_activity_logs_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_items: {
+        Row: {
+          centre: string | null
+          created_at: string | null
+          current_stock: number | null
+          damaged: number | null
+          dataset: string | null
+          grade: string | null
+          id: string
+          item_name: string
+          missing: number | null
+          reserved: number | null
+          size: string | null
+          updated_at: string | null
+          ytd_received: number | null
+          zone: string | null
+        }
+        Insert: {
+          centre?: string | null
+          created_at?: string | null
+          current_stock?: number | null
+          damaged?: number | null
+          dataset?: string | null
+          grade?: string | null
+          id?: string
+          item_name: string
+          missing?: number | null
+          reserved?: number | null
+          size?: string | null
+          updated_at?: string | null
+          ytd_received?: number | null
+          zone?: string | null
+        }
+        Update: {
+          centre?: string | null
+          created_at?: string | null
+          current_stock?: number | null
+          damaged?: number | null
+          dataset?: string | null
+          grade?: string | null
+          id?: string
+          item_name?: string
+          missing?: number | null
+          reserved?: number | null
+          size?: string | null
+          updated_at?: string | null
+          ytd_received?: number | null
+          zone?: string | null
+        }
+        Relationships: []
+      }
       page_access: {
         Row: {
           has_access: boolean
@@ -167,6 +303,41 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      page_dataset_mapping: {
+        Row: {
+          dataset_id: string | null
+          dataset_name: string | null
+          dataset_slug: string | null
+          id: string
+          page_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          dataset_id?: string | null
+          dataset_name?: string | null
+          dataset_slug?: string | null
+          id?: string
+          page_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          dataset_id?: string | null
+          dataset_name?: string | null
+          dataset_slug?: string | null
+          id?: string
+          page_name?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_dataset_mapping_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "student_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -227,6 +398,50 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      student_permissions: {
+        Row: {
+          created_at: string | null
+          dataset: string
+          date: string
+          granted_by: string | null
+          granted_by_name: string | null
+          id: string
+          permission_type: string
+          reason: string | null
+          student_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dataset?: string
+          date: string
+          granted_by?: string | null
+          granted_by_name?: string | null
+          id?: string
+          permission_type: string
+          reason?: string | null
+          student_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dataset?: string
+          date?: string
+          granted_by?: string | null
+          granted_by_name?: string | null
+          id?: string
+          permission_type?: string
+          reason?: string | null
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_permissions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       students: {
         Row: {
