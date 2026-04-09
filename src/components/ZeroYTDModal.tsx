@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
-import CallLogDialog from "./CallLogDialog";
+import { Eye } from "lucide-react";
+import CallHistoryDialog from "./CallHistoryDialog";
 
 interface ZeroYTDStudent {
   id: string;
@@ -15,8 +16,7 @@ interface ZeroYTDStudent {
   enrollment_status: string;
   lastPresent?: string;
   expectedReturn?: string;
-  latestComment?: string;
-  latestCallLog?: any;
+  absenceReason?: string;
 }
 
 interface ZeroYTDModalProps {
@@ -30,7 +30,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [lastPresentMap, setLastPresentMap] = useState<Record<string, string>>({});
   const [callLogsMap, setCallLogsMap] = useState<Record<string, any>>({});
-  const [callLogStudent, setCallLogStudent] = useState<ZeroYTDStudent | null>(null);
+  const [historyStudent, setHistoryStudent] = useState<ZeroYTDStudent | null>(null);
   const [loading, setLoading] = useState(false);
 
   const zeroStudents = useMemo(() => {
@@ -45,8 +45,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
         enrollment_status: s.enrollment_status,
         lastPresent: lastPresentMap[s.id],
         expectedReturn: callLogsMap[s.id]?.expected_return_date,
-        latestComment: callLogsMap[s.id]?.comment,
-        latestCallLog: callLogsMap[s.id],
+        absenceReason: callLogsMap[s.id]?.absence_reason,
       }));
   }, [studentIds, allStudents, lastPresentMap, callLogsMap]);
 
@@ -66,7 +65,6 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     const fetchDetails = async () => {
       setLoading(true);
       try {
-        // Fetch last present date for each student (latest attendance with P)
         const chunks: string[][] = [];
         for (let i = 0; i < studentIds.length; i += 50) chunks.push(studentIds.slice(i, i + 50));
 
@@ -88,13 +86,12 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
         );
         setLastPresentMap(lpMap);
 
-        // Fetch latest call logs
         const clMap: Record<string, any> = {};
         await Promise.all(
           chunks.map(async (chunk) => {
             const { data } = await supabase
               .from("call_logs" as any)
-              .select("student_id, comment, expected_return_date, call_status, absence_reason, absent_date")
+              .select("student_id, absence_reason, expected_return_date, absent_date")
               .in("student_id", chunk)
               .order("absent_date", { ascending: false })
               .limit(chunk.length * 2);
@@ -113,12 +110,10 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     void fetchDetails();
   }, [open, studentIds]);
 
-  const today = format(new Date(), "yyyy-MM-dd");
-
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
+        <SheetContent side="right" className="w-full sm:max-w-5xl overflow-y-auto">
           <SheetHeader className="mb-4">
             <SheetTitle className="flex items-center gap-2">
               Zero YTD Students
@@ -148,54 +143,52 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No zero attendance students found</p>
           ) : (
-            <div className="space-y-2">
-              {filtered.map((s) => (
-                <div key={s.id} className="rounded-lg border border-border bg-card p-3 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{s.student_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.roll_no} · {s.classroom_name} · {s.enrollment_status}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCallLogStudent(s)}
-                      className="text-xs"
-                    >
-                      Update
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                    <span>Last Present: <span className="font-medium text-foreground">{s.lastPresent ? format(new Date(s.lastPresent + "T00:00:00"), "dd MMM yyyy") : "Never"}</span></span>
-                    <span>Expected Return: <span className="font-medium text-foreground">{s.expectedReturn ? format(new Date(s.expectedReturn + "T00:00:00"), "dd MMM yyyy") : "—"}</span></span>
-                  </div>
-                  {s.latestComment && (
-                    <p className="text-xs text-muted-foreground italic truncate">Remark: {s.latestComment}</p>
-                  )}
-                </div>
-              ))}
+            <div className="rounded-lg border border-border overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="px-3 py-2 text-left font-semibold">Student Name</th>
+                    <th className="px-3 py-2 text-left font-semibold">Roll No</th>
+                    <th className="px-3 py-2 text-left font-semibold">Classroom</th>
+                    <th className="px-3 py-2 text-left font-semibold">Reason</th>
+                    <th className="px-3 py-2 text-left font-semibold">Last Present</th>
+                    <th className="px-3 py-2 text-left font-semibold">Expected Return</th>
+                    <th className="px-3 py-2 text-center font-semibold">History</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((s, i) => (
+                    <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+                      <td className="px-3 py-2 font-medium">{s.student_name}</td>
+                      <td className="px-3 py-2">{s.roll_no}</td>
+                      <td className="px-3 py-2 text-muted-foreground">{s.classroom_name}</td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">{s.absenceReason || "—"}</td>
+                      <td className="px-3 py-2 text-xs">
+                        {s.lastPresent ? format(new Date(s.lastPresent + "T00:00:00"), "dd MMM yyyy") : "Never"}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {s.expectedReturn ? format(new Date(s.expectedReturn + "T00:00:00"), "dd MMM yyyy") : "Not Set"}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => setHistoryStudent(s)}>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </SheetContent>
       </Sheet>
 
-      {callLogStudent && (
-        <CallLogDialog
-          open={!!callLogStudent}
-          onOpenChange={(o) => { if (!o) setCallLogStudent(null); }}
-          studentId={callLogStudent.id}
-          studentName={callLogStudent.student_name}
-          rollNo={callLogStudent.roll_no}
-          classroom={callLogStudent.classroom_name}
-          absentDate={today}
-          existingLog={callLogStudent.latestCallLog}
-          onSaved={() => {
-            setCallLogStudent(null);
-            // Re-trigger details fetch
-            onOpenChange(true);
-          }}
+      {historyStudent && (
+        <CallHistoryDialog
+          open={!!historyStudent}
+          onOpenChange={(o) => { if (!o) setHistoryStudent(null); }}
+          studentId={historyStudent.id}
+          studentName={historyStudent.student_name}
         />
       )}
     </>
