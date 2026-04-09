@@ -21,6 +21,9 @@ const AttendanceRecords = lazy(() => import("./pages/AttendanceRecords"));
 const DailyAttendanceReport = lazy(() => import("./pages/DailyAttendanceReport"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const StudentCalendarReport = lazy(() => import("./pages/StudentCalendarReport"));
+const PermissionEntry = lazy(() => import("./pages/PermissionEntry"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const DistributionStatus = lazy(() => import("./pages/DistributionStatus"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,6 +62,9 @@ const App = () => (
               <Route path="/records" element={<ProtectedRoute requiredPage="Attendance Records"><SidebarLayout><AttendanceRecords /></SidebarLayout></ProtectedRoute>} />
               <Route path="/daily-report" element={<ProtectedRoute requiredPage="Daily Report"><SidebarLayout><DailyAttendanceReport /></SidebarLayout></ProtectedRoute>} />
               <Route path="/student-calendar" element={<ProtectedRoute requiredPage="Student Calendar"><SidebarLayout><StudentCalendarReport /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/permissions" element={<ProtectedRoute requiredPage="Permission Entry"><SidebarLayout><PermissionEntry /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/inventory" element={<ProtectedRoute requiredPage="Inventory"><SidebarLayout><Inventory /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/distribution-status" element={<ProtectedRoute requiredPage="Distribution Status"><SidebarLayout><DistributionStatus /></SidebarLayout></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

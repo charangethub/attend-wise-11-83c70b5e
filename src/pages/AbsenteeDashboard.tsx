@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, Phone, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, Phone, RefreshCw, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
-import { getCombinedStatus, getCombinedStatusBadge } from "@/lib/attendanceSession";
 import CallLogDialog from "@/components/CallLogDialog";
+import CallHistoryDialog from "@/components/CallHistoryDialog";
 import { logActivity } from "@/hooks/useActivityLog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
-import { fetchAttendanceForStudents, fetchDatasetStudents, getCombinedRemarkText } from "@/lib/attendanceData";
+import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
 const AbsenteeDashboard = () => {
   const { user, userRole } = useAuth();
@@ -30,9 +30,9 @@ const AbsenteeDashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [callLogStudent, setCallLogStudent] = useState<any>(null);
+  const [historyStudent, setHistoryStudent] = useState<any>(null);
   const autoForwardedRef = useRef(false);
 
-  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(t);
@@ -58,7 +58,6 @@ const AbsenteeDashboard = () => {
         statuses: ["AB", "L"],
       });
 
-      // Fetch call logs for selected date
       const clMap: Record<string, any> = {};
       if (studentIds.length > 0) {
         const chunks: string[][] = [];
@@ -95,7 +94,7 @@ const AbsenteeDashboard = () => {
     debounceMs: 500,
   });
 
-  // Auto-forward call logs from previous days
+  // Auto-forward call logs
   useEffect(() => {
     if (loading || autoForwardedRef.current || !user) return;
 
@@ -157,15 +156,10 @@ const AbsenteeDashboard = () => {
     void autoForward();
   }, [loading, attendance, callLogs, selectedDate, user]);
 
-  // Build per-student combined status from AM/PM records
   const absentees = useMemo(() => {
-    const studentAttMap = new Map<string, { AM?: any; PM?: any }>();
+    const studentAttMap = new Map<string, any>();
     attendance.forEach((a: any) => {
-      if (!studentAttMap.has(a.student_id)) studentAttMap.set(a.student_id, {});
-      const entry = studentAttMap.get(a.student_id)!;
-      const session = a.session || "AM";
-      if (session === "AM") entry.AM = a;
-      else entry.PM = a;
+      if (!studentAttMap.has(a.student_id)) studentAttMap.set(a.student_id, a);
     });
 
     return students
@@ -177,23 +171,18 @@ const AbsenteeDashboard = () => {
         return s.student_name.toLowerCase().includes(q) || s.roll_no.toLowerCase().includes(q);
       })
       .map((s) => {
-        const sessions = studentAttMap.get(s.id)!;
-        const amStatus = sessions.AM?.status;
-        const pmStatus = sessions.PM?.status;
-        const combined = getCombinedStatus(amStatus, pmStatus);
-        const remarkAM = sessions.AM?.remark || "";
-        const remarkPM = sessions.PM?.remark || "";
-        const combinedRemark = getCombinedRemarkText(remarkAM, remarkPM);
+        const att = studentAttMap.get(s.id)!;
         const cl = callLogs[s.id];
         return {
           ...s,
-          combined, amStatus, pmStatus, remarkAM, remarkPM, combinedRemark, sessions,
+          status: att.status,
+          remark: att.remark || "",
           callLog: cl || null,
           isAutoForwarded: cl?._autoForwarded || cl?.comment?.startsWith("[Auto-forwarded"),
         };
       })
       .filter((s) => {
-        if (statusFilter === "absent") return s.combined === "AB" || s.combined.includes("A");
+        if (statusFilter === "absent") return s.status === "AB";
         if (statusFilter === "absent_no_remark") return !s.callLog;
         return true;
       })
@@ -212,12 +201,12 @@ const AbsenteeDashboard = () => {
 
   const exportCSV = () => {
     const headers = isAdminOrOwner
-      ? ["Roll No", "Student Name", "Grade", "Classroom", "Emergency Contact 1", "Emergency Contact 2", "AM", "PM", "Combined", "Call Status", "Absence Reason", "Comment"]
-      : ["Roll No", "Student Name", "Grade", "Classroom", "AM", "PM", "Combined", "Call Status", "Absence Reason", "Comment"];
+      ? ["Roll No", "Student Name", "Grade", "Classroom", "Emergency Contact 1", "Emergency Contact 2", "Status", "Call Status", "Absence Reason", "Comment"]
+      : ["Roll No", "Student Name", "Grade", "Classroom", "Status", "Call Status", "Absence Reason", "Comment"];
     const rows = absentees.map((s) => {
       const base = [s.roll_no, s.student_name, s.grade, s.classroom_name];
       if (isAdminOrOwner) base.push(s.emergency_contact_1 || "", s.emergency_contact_2 || "");
-      base.push(s.amStatus || "—", s.pmStatus || "—", s.combined);
+      base.push(s.status);
       base.push(s.callLog?.call_status || "—", s.callLog?.absence_reason || "—", s.callLog?.comment || "");
       return base;
     });
@@ -237,12 +226,31 @@ const AbsenteeDashboard = () => {
     return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${colors[cl.call_status] || "bg-muted text-muted-foreground"}`}>{cl.call_status}</span>;
   };
 
+  const getRemarkDisplay = (s: any) => {
+    const cl = s.callLog;
+    if (!cl) return <span className="text-xs text-muted-foreground">—</span>;
+
+    const comment = cl.comment?.replace(/^\[Auto-forwarded.*?\]\s*/, "").trim();
+    const reason = cl.absence_reason;
+
+    if (comment) {
+      return (
+        <div className="max-w-[200px]">
+          <p className="text-xs text-foreground truncate">{comment}</p>
+          {reason && <p className="text-[10px] text-muted-foreground truncate">{reason}</p>}
+        </div>
+      );
+    }
+    if (reason) return <span className="text-xs text-foreground">{reason}</span>;
+    return <span className="text-xs text-muted-foreground">—</span>;
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
-          <div><h2 className="text-2xl font-bold text-foreground">Daily Absentee Report</h2><p className="text-sm text-muted-foreground">{absentees.length} absent/on leave</p></div>
+          <div><h2 className="text-2xl font-bold text-foreground">Daily Absentee Report</h2><p className="text-sm text-muted-foreground">{absentees.length} absent students</p></div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
@@ -264,31 +272,27 @@ const AbsenteeDashboard = () => {
             <th className="px-4 py-2.5 text-left font-semibold">Roll No</th>
             <th className="px-4 py-2.5 text-left font-semibold">Student Name</th>
             <th className="px-4 py-2.5 text-left font-semibold">Classroom</th>
-            <th className="px-4 py-2.5 text-center font-semibold">AM</th>
-            <th className="px-4 py-2.5 text-center font-semibold">PM</th>
             <th className="px-4 py-2.5 text-center font-semibold">Status</th>
             <th className="px-4 py-2.5 text-center font-semibold">Call Status</th>
-            <th className="px-4 py-2.5 text-left font-semibold">Reason</th>
+            <th className="px-4 py-2.5 text-left font-semibold">Remarks / RCA</th>
             <th className="px-4 py-2.5 text-center font-semibold">Action</th>
+            <th className="px-4 py-2.5 text-center font-semibold">History</th>
             <th className="px-4 py-2.5 text-center font-semibold">WhatsApp</th>
           </tr></thead>
             <tbody>{absentees.map((s, i) => {
               const ec1 = s.emergency_contact_1 || ""; const ec2 = s.emergency_contact_2 || "";
-              const wa1 = ec1 ? makeWhatsAppUrl(ec1, s.student_name, s.roll_no, s.combined) : null;
-              const wa2 = ec2 ? makeWhatsAppUrl(ec2, s.student_name, s.roll_no, s.combined) : null;
-              const sessionBadge = (status?: string) => {
-                if (!status) return <span className="text-xs text-muted-foreground">—</span>;
-                const colors: Record<string, string> = { AB: "bg-destructive text-destructive-foreground", L: "bg-warning text-warning-foreground", P: "bg-success text-success-foreground" };
-                return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${colors[status] || "bg-muted text-muted-foreground"}`}>{status === "AB" ? "Absent" : status === "L" ? "Leave" : status === "P" ? "Present" : status}</span>;
-              };
+              const wa1 = ec1 ? makeWhatsAppUrl(ec1, s.student_name, s.roll_no, s.status) : null;
+              const wa2 = ec2 ? makeWhatsAppUrl(ec2, s.student_name, s.roll_no, s.status) : null;
               return (
                 <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                   <td className="px-4 py-2.5 font-medium">{s.roll_no}</td>
                   <td className="px-4 py-2.5 font-medium">{s.student_name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{s.classroom_name}</td>
-                  <td className="px-4 py-2.5 text-center">{sessionBadge(s.amStatus)}</td>
-                  <td className="px-4 py-2.5 text-center">{sessionBadge(s.pmStatus)}</td>
-                  <td className="px-4 py-2.5 text-center"><span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${getCombinedStatusBadge(s.combined)}`}>{s.combined}</span></td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${s.status === "AB" ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground"}`}>
+                      {s.status === "AB" ? "Absent" : "Leave"}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {getCallStatusDisplay(s.callLog)}
@@ -299,16 +303,15 @@ const AbsenteeDashboard = () => {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">{s.callLog?.absence_reason || "—"}</td>
+                  <td className="px-4 py-2.5">{getRemarkDisplay(s)}</td>
                   <td className="px-4 py-2.5 text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCallLogStudent(s)}
-                      className="text-xs"
-                    >
-                      <Phone className="h-3 w-3 mr-1" />
-                      Update
+                    <Button variant="outline" size="sm" onClick={() => setCallLogStudent(s)} className="text-xs">
+                      <Phone className="h-3 w-3 mr-1" /> Update
+                    </Button>
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    <Button variant="outline" size="sm" className="h-7 w-7 p-0" onClick={() => setHistoryStudent(s)}>
+                      <Eye className="h-3.5 w-3.5" />
                     </Button>
                   </td>
                   <td className="px-4 py-2.5 text-center">
@@ -334,10 +337,15 @@ const AbsenteeDashboard = () => {
           classroom={callLogStudent.classroom_name}
           absentDate={selectedDate}
           existingLog={callLogStudent.callLog}
-          onSaved={() => {
-            setCallLogStudent(null);
-            void fetchData();
-          }}
+          onSaved={() => { setCallLogStudent(null); void fetchData(); }}
+        />
+      )}
+      {historyStudent && (
+        <CallHistoryDialog
+          open={!!historyStudent}
+          onOpenChange={(o) => { if (!o) setHistoryStudent(null); }}
+          studentId={historyStudent.id}
+          studentName={historyStudent.student_name}
         />
       )}
     </div>
