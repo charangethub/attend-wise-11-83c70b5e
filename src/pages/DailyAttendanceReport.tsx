@@ -72,7 +72,7 @@ const DailyAttendanceReport = () => {
       if (sessions) {
         const combined = getCombinedStatus(sessions.AM, sessions.PM);
         if (combined === "P") classMap[name].present++;
-        else if (combined === "AB") classMap[name].absent++;
+        else if (combined === "A") classMap[name].absent++;
         else if (combined === "L") classMap[name].leave++;
         else classMap[name].half++;
       }

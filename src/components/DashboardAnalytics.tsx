@@ -9,7 +9,7 @@ import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 import ZeroYTDModal from "./ZeroYTDModal";
 
-const COLORS = { P: "hsl(142, 72%, 40%)", AB: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Half: "hsl(25, 95%, 53%)", Unmarked: "hsl(30, 15%, 70%)" };
+const COLORS = { P: "hsl(142, 72%, 40%)", A: "hsl(0, 72%, 51%)", L: "hsl(38, 92%, 50%)", Half: "hsl(25, 95%, 53%)", Unmarked: "hsl(30, 15%, 70%)" };
 
 const DashboardAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
@@ -23,18 +23,14 @@ const DashboardAnalytics = () => {
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
-
     setLoading(true);
-
     try {
-      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status");
-      const studentIds = studentRows.map((student) => student.id);
-
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, roll_no, student_name, classroom_name, enrollment_status, center");
+      const studentIds = studentRows.map((student: any) => student.id);
       const [todayAttendance, weekAttendance] = await Promise.all([
         fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, exactDate: today }),
         fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, fromDate: weekAgo, toDate: today }),
       ]);
-
       setStudents(studentRows);
       setAttendance(todayAttendance);
       setAllAttendance(weekAttendance);
@@ -54,7 +50,6 @@ const DashboardAnalytics = () => {
     debounceMs: 800,
   });
 
-  // Build per-student combined status for today
   const attMap = useMemo(() => {
     const sessionMap: Record<string, { AM?: string; PM?: string }> = {};
     attendance.forEach((a: any) => {
@@ -71,18 +66,18 @@ const DashboardAnalytics = () => {
   }, [attendance]);
 
   const zeroYTDStudentIds = useMemo(() => {
-    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
-    const studentsWithAttendance = new Set(allAttendance.filter(a => a.status === "P").map(a => a.student_id));
+    const enrolledIds = new Set(students.filter((s: any) => s.enrollment_status === "ENROLLED").map((s: any) => s.id));
+    const studentsWithAttendance = new Set(allAttendance.filter((a: any) => a.status === "P").map((a: any) => a.student_id));
     return [...enrolledIds].filter(id => !studentsWithAttendance.has(id));
   }, [students, allAttendance]);
 
   const zeroYTDCount = zeroYTDStudentIds.length;
 
   const avgAttendancePct = useMemo(() => {
-    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
+    const enrolledIds = new Set(students.filter((s: any) => s.enrollment_status === "ENROLLED").map((s: any) => s.id));
     const dateMap: Record<string, Set<string>> = {};
     const datePresentMap: Record<string, Set<string>> = {};
-    allAttendance.forEach(a => {
+    allAttendance.forEach((a: any) => {
       if (!enrolledIds.has(a.student_id)) return;
       if (!dateMap[a.date]) { dateMap[a.date] = new Set(); datePresentMap[a.date] = new Set(); }
       dateMap[a.date].add(a.student_id);
@@ -99,19 +94,19 @@ const DashboardAnalytics = () => {
   }, [students, allAttendance]);
 
   const avgWAU = useMemo(() => {
-    const enrolledIds = new Set(students.filter(s => s.enrollment_status === "ENROLLED").map(s => s.id));
+    const enrolledIds = new Set(students.filter((s: any) => s.enrollment_status === "ENROLLED").map((s: any) => s.id));
     if (enrolledIds.size === 0) return 0;
-    const activeStudents = new Set(allAttendance.filter(a => a.status === "P" && enrolledIds.has(a.student_id)).map(a => a.student_id));
+    const activeStudents = new Set(allAttendance.filter((a: any) => a.status === "P" && enrolledIds.has(a.student_id)).map((a: any) => a.student_id));
     return Math.round((activeStudents.size / enrolledIds.size) * 100);
   }, [students, allAttendance]);
 
   const totalStudents = students.length;
-  const enrolledCount = students.filter((s) => s.enrollment_status === "ENROLLED").length;
-  const forfeitedCount = students.filter((s) => s.enrollment_status === "FORFEITED").length;
-  const presentCount = students.filter((s) => attMap[s.id] === "P").length;
-  const absentCount = students.filter((s) => attMap[s.id] === "AB").length;
-  const leaveCount = students.filter((s) => attMap[s.id] === "L").length;
-  const halfDayCount = students.filter((s) => attMap[s.id] && !["P", "AB", "L", "H", ""].includes(attMap[s.id])).length;
+  const enrolledCount = students.filter((s: any) => s.enrollment_status === "ENROLLED").length;
+  const forfeitedCount = students.filter((s: any) => s.enrollment_status === "FORFEITED").length;
+  const presentCount = students.filter((s: any) => attMap[s.id] === "P").length;
+  const absentCount = students.filter((s: any) => attMap[s.id] === "A").length;
+  const leaveCount = students.filter((s: any) => attMap[s.id] === "L").length;
+  const halfDayCount = students.filter((s: any) => attMap[s.id] && !["P", "A", "L", "H", ""].includes(attMap[s.id])).length;
   const unmarkedCount = totalStudents - presentCount - absentCount - leaveCount - halfDayCount;
   const presentPct = totalStudents ? Math.round((presentCount / totalStudents) * 100) : 0;
   const absentPct = totalStudents ? Math.round((absentCount / totalStudents) * 100) : 0;
@@ -119,28 +114,28 @@ const DashboardAnalytics = () => {
 
   const pieData = [
     { name: "Present", value: presentCount, color: COLORS.P },
-    { name: "Absent", value: absentCount, color: COLORS.AB },
+    { name: "Absent", value: absentCount, color: COLORS.A },
     { name: "Leave", value: leaveCount, color: COLORS.L },
     { name: "Half Day", value: halfDayCount, color: COLORS.Half },
     { name: "Unmarked", value: unmarkedCount, color: COLORS.Unmarked },
   ].filter((d) => d.value > 0);
 
   const classroomData = useMemo(() => {
-    const classrooms: Record<string, { total: number; P: number; AB: number; L: number; half: number }> = {};
-    students.forEach((s) => {
+    const classrooms: Record<string, { total: number; P: number; A: number; L: number; half: number }> = {};
+    students.forEach((s: any) => {
       const name = s.classroom_name || "Unknown";
-      if (!classrooms[name]) classrooms[name] = { total: 0, P: 0, AB: 0, L: 0, half: 0 };
+      if (!classrooms[name]) classrooms[name] = { total: 0, P: 0, A: 0, L: 0, half: 0 };
       classrooms[name].total++;
       const status = attMap[s.id];
       if (status === "P") classrooms[name].P++;
-      else if (status === "AB") classrooms[name].AB++;
+      else if (status === "A") classrooms[name].A++;
       else if (status === "L") classrooms[name].L++;
       else if (status && status !== "H") classrooms[name].half++;
     });
     return Object.entries(classrooms).map(([name, data]) => ({
       name: name.length > 25 ? name.slice(0, 22) + "…" : name,
       fullName: name,
-      Present: data.P, Absent: data.AB, Leave: data.L, HalfDay: data.half,
+      Present: data.P, Absent: data.A, Leave: data.L, HalfDay: data.half,
       total: data.total,
       presentPct: data.total ? Math.round((data.P / data.total) * 100) : 0,
     })).sort((a, b) => a.name.localeCompare(b.name));
@@ -232,7 +227,7 @@ const DashboardAnalytics = () => {
                   return <div className="rounded-lg border border-border bg-card p-3 shadow-lg"><p className="text-xs font-bold">{d.fullName}</p><p className="text-xs text-success">Present: {d.Present}</p><p className="text-xs text-destructive">Absent: {d.Absent}</p><p className="text-xs text-warning">Leave: {d.Leave}</p><p className="text-xs text-orange-600">Half Day: {d.HalfDay}</p><p className="mt-1 text-xs font-semibold">{d.presentPct}%</p></div>;
                 }} />
                 <Bar dataKey="Present" stackId="a" fill={COLORS.P} />
-                <Bar dataKey="Absent" stackId="a" fill={COLORS.AB} />
+                <Bar dataKey="Absent" stackId="a" fill={COLORS.A} />
                 <Bar dataKey="Leave" stackId="a" fill={COLORS.L} />
                 <Bar dataKey="HalfDay" stackId="a" fill={COLORS.Half} radius={[0, 4, 4, 0]} />
               </BarChart>

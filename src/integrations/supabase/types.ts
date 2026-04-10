@@ -147,6 +147,41 @@ export type Database = {
           },
         ]
       }
+      dataset_urls: {
+        Row: {
+          created_at: string
+          dataset_id: string
+          id: string
+          label: string
+          purpose: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          dataset_id: string
+          id?: string
+          label?: string
+          purpose?: string
+          url?: string
+        }
+        Update: {
+          created_at?: string
+          dataset_id?: string
+          id?: string
+          label?: string
+          purpose?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dataset_urls_dataset_id_fkey"
+            columns: ["dataset_id"]
+            isOneToOne: false
+            referencedRelation: "student_datasets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       distribution_status: {
         Row: {
           created_at: string | null
@@ -234,52 +269,94 @@ export type Database = {
       }
       inventory_items: {
         Row: {
+          category: string
           centre: string | null
           created_at: string | null
           current_stock: number | null
           damaged: number | null
           dataset: string | null
+          distributed: number
+          extra: number
           grade: string | null
           id: string
           item_name: string
           missing: number | null
           reserved: number | null
           size: string | null
+          sub_category: string | null
+          total_received: number
           updated_at: string | null
+          updated_by: string | null
           ytd_received: number | null
           zone: string | null
         }
         Insert: {
+          category?: string
           centre?: string | null
           created_at?: string | null
           current_stock?: number | null
           damaged?: number | null
           dataset?: string | null
+          distributed?: number
+          extra?: number
           grade?: string | null
           id?: string
           item_name: string
           missing?: number | null
           reserved?: number | null
           size?: string | null
+          sub_category?: string | null
+          total_received?: number
           updated_at?: string | null
+          updated_by?: string | null
           ytd_received?: number | null
           zone?: string | null
         }
         Update: {
+          category?: string
           centre?: string | null
           created_at?: string | null
           current_stock?: number | null
           damaged?: number | null
           dataset?: string | null
+          distributed?: number
+          extra?: number
           grade?: string | null
           id?: string
           item_name?: string
           missing?: number | null
           reserved?: number | null
           size?: string | null
+          sub_category?: string | null
+          total_received?: number
           updated_at?: string | null
+          updated_by?: string | null
           ytd_received?: number | null
           zone?: string | null
+        }
+        Relationships: []
+      }
+      inventory_urls: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          url?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          url?: string
         }
         Relationships: []
       }
@@ -509,6 +586,33 @@ export type Database = {
           updated_at?: string
           user_id_vedantu?: string
           zone?: string
+        }
+        Relationships: []
+      }
+      sync_targets: {
+        Row: {
+          apps_script_url: string
+          created_at: string
+          id: string
+          is_active: boolean
+          label: string
+          purpose: string
+        }
+        Insert: {
+          apps_script_url?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          purpose?: string
+        }
+        Update: {
+          apps_script_url?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          label?: string
+          purpose?: string
         }
         Relationships: []
       }
