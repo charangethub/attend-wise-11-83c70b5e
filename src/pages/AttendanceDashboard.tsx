@@ -182,7 +182,7 @@ const AttendanceDashboard = () => {
     if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
     if (showUnmarkedOnly && attendance[s.id]) return false;
     if (statusFilter === "P" && attendance[s.id] !== "P") return false;
-    if (statusFilter === "AB" && attendance[s.id] !== "AB") return false;
+    if (statusFilter === "A" && attendance[s.id] !== "A") return false;
     if (statusFilter === "H" && attendance[s.id] !== "H") return false;
     return true;
   }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
@@ -191,7 +191,7 @@ const AttendanceDashboard = () => {
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
   const pct = filteredStudents.length > 0 ? Math.round((markedCount / filteredStudents.length) * 100) : 0;
   const pCount = filteredStudents.filter((s) => attendance[s.id] === "P").length;
-  const abCount = filteredStudents.filter((s) => attendance[s.id] === "AB").length;
+  const abCount = filteredStudents.filter((s) => attendance[s.id] === "A").length;
   const hCount = filteredStudents.filter((s) => attendance[s.id] === "H").length;
 
   const handleSave = async () => {
@@ -355,7 +355,7 @@ const AttendanceDashboard = () => {
           <span className="text-sm font-medium">Marked: {markedCount} / {filteredStudents.length}</span>
           <div className="flex gap-3 text-xs">
             <span className="text-success font-bold">P:{pCount}</span>
-            <span className="text-destructive font-bold">AB:{abCount}</span>
+            <span className="text-destructive font-bold">A:{abCount}</span>
             <span className="text-purple-600 font-bold">H:{hCount}</span>
           </div>
         </div>
@@ -389,7 +389,7 @@ const AttendanceDashboard = () => {
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="P">Present</SelectItem>
-              <SelectItem value="AB">Absent</SelectItem>
+              <SelectItem value="A">Absent</SelectItem>
               <SelectItem value="H">Half Day</SelectItem>
             </SelectContent>
           </Select>
@@ -397,7 +397,7 @@ const AttendanceDashboard = () => {
           <Button variant="outline" size="sm" className="gap-1 text-success border-success/30 hover:bg-success/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "P"; }); setAttendance(u); }}>
             <CheckCircle className="h-3.5 w-3.5" /> All Present
           </Button>
-          <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "AB"; }); setAttendance(u); }}>
+          <Button variant="outline" size="sm" className="gap-1 text-destructive border-destructive/30 hover:bg-destructive/10" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "A"; }); setAttendance(u); }}>
             <XCircle className="h-3.5 w-3.5" /> All Absent
           </Button>
           <Button variant="outline" size="sm" className="gap-1 border-purple-300 hover:bg-purple-50 text-purple-600" onClick={() => { const u = { ...attendance }; filteredStudents.forEach((s) => { u[s.id] = "H"; }); setAttendance(u); }}>
@@ -427,7 +427,7 @@ const AttendanceDashboard = () => {
       {viewMode === "card" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {filteredStudents.map((s) => (
-            <div key={s.id} className={`rounded-xl border p-3 transition-all ${attendance[s.id] === "P" ? "border-success/50 bg-success/5" : attendance[s.id] === "AB" ? "border-destructive/50 bg-destructive/5" : attendance[s.id] === "H" ? "border-purple-400/50 bg-purple-50" : "border-border bg-card"}`}>
+            <div key={s.id} className={`rounded-xl border p-3 transition-all ${attendance[s.id] === "P" ? "border-success/50 bg-success/5" : attendance[s.id] === "A" ? "border-destructive/50 bg-destructive/5" : attendance[s.id] === "H" ? "border-purple-400/50 bg-purple-50" : "border-border bg-card"}`}>
               <div className="mb-2">
                 <span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{s.roll_no}</span>
                 <p className="mt-1 text-sm font-semibold text-foreground truncate">{s.student_name}</p>
@@ -435,7 +435,7 @@ const AttendanceDashboard = () => {
               </div>
               <div className="flex gap-1">
                 {statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}
-                {statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}
+                {statusBtn(s.id, "A", "A", "bg-destructive text-destructive-foreground")}
                 {statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}
               </div>
               {remarks[s.id] && (
@@ -473,7 +473,7 @@ const AttendanceDashboard = () => {
                   <td className="px-3 py-2.5">
                     <div className="flex justify-center gap-1.5">
                       {statusBtn(s.id, "P", "P", "bg-success text-success-foreground")}
-                      {statusBtn(s.id, "AB", "AB", "bg-destructive text-destructive-foreground")}
+                      {statusBtn(s.id, "A", "A", "bg-destructive text-destructive-foreground")}
                       {statusBtn(s.id, "H", "H", "bg-purple-600 text-primary-foreground")}
                     </div>
                   </td>
