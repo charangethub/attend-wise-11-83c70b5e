@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, Printer, X } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarDays, ChevronLeft, ChevronRight, Printer, Filter } from "lucide-react";
 import { getCombinedStatus } from "@/lib/attendanceSession";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
@@ -15,6 +16,7 @@ const DailyAttendanceReport = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+  const [filterOpen, setFilterOpen] = useState(false);
   const { data: settings } = useSystemSettings();
   const { datasetSlug: activeSlug } = usePageDataset("Daily Report");
 
@@ -25,7 +27,7 @@ const DailyAttendanceReport = () => {
       const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status, center", { onlyEnrolled: true });
       const attendanceRows = await fetchAttendanceForStudents<any>({
         columns: "student_id, status, session",
-        studentIds: studentRows.map((student) => student.id),
+        studentIds: studentRows.map((student: any) => student.id),
         exactDate: selectedDate,
       });
       setStudents(studentRows);
@@ -65,7 +67,6 @@ const DailyAttendanceReport = () => {
     const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
-      // If batches are selected, skip non-matching
       if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
 
       if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0 };
@@ -106,37 +107,73 @@ const DailyAttendanceReport = () => {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary" /> Daily Attendance Report</h2>
         <div className="flex items-center gap-2">
+          {/* Batches Filter Popover */}
+          <Popover open={filterOpen} onOpenChange={setFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={selectedBatches.length > 0 ? "default" : "outline"}
+                size="sm"
+                className="gap-1.5"
+              >
+                <Filter className="h-4 w-4" />
+                Batches
+                {selectedBatches.length > 0 && (
+                  <span className="ml-1 rounded-full bg-background text-foreground text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">
+                    {selectedBatches.length}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-0" align="end">
+              <div className="px-4 py-3 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">Filter Classrooms</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setSelectedBatches([...allClassrooms])}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setSelectedBatches([])}
+                      className="text-xs font-medium text-muted-foreground hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {allClassrooms.map(c => {
+                  const isSelected = selectedBatches.includes(c);
+                  return (
+                    <label
+                      key={c}
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => toggleBatch(c)}
+                    >
+                      <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected ? "border-primary bg-primary" : "border-muted-foreground/40"
+                      }`}>
+                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-sm text-foreground truncate">{c}</span>
+                    </label>
+                  );
+                })}
+                {allClassrooms.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-4 py-3">No classrooms found</p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <Button variant="outline" size="icon" onClick={() => changeDate(-1)} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground" />
           <Button variant="outline" size="icon" onClick={() => changeDate(1)} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
           <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5 print:hidden"><Printer className="h-4 w-4" /> Print</Button>
         </div>
-      </div>
-
-      {/* Batch filter chips */}
-      <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
-        <span className="text-xs font-semibold text-muted-foreground">Filter by Batch:</span>
-        {allClassrooms.map(c => (
-          <button
-            key={c}
-            onClick={() => toggleBatch(c)}
-            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-              selectedBatches.includes(c)
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
-        {selectedBatches.length > 0 && (
-          <button
-            onClick={() => setSelectedBatches([])}
-            className="rounded-full px-3 py-1 text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-1"
-          >
-            <X className="h-3 w-3" /> Clear Filter
-          </button>
-        )}
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
