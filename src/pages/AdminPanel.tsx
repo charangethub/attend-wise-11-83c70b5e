@@ -64,6 +64,7 @@ const AdminPanel = () => {
   const [newTargetUrl, setNewTargetUrl] = useState("");
   const [savingTarget, setSavingTarget] = useState(false);
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
+  const [restoringAttendance, setRestoringAttendance] = useState(false);
 
   const fetchUsers = async () => {
     const [{ data: profiles }, { data: roles }, { data: statuses }, { data: access }] = await Promise.all([
