@@ -1,15 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getDaysInMonth } from "date-fns";
+import { getDaysInMonth, format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, BarChart3, Search } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Download, BarChart3, Search, Upload } from "lucide-react";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { useAuth } from "@/contexts/AuthContext";
 import { getCombinedStatus, getCombinedStatusColor } from "@/lib/attendanceSession";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkTooltip } from "@/lib/attendanceData";
+import { toast } from "sonner";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
