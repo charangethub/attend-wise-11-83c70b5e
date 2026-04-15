@@ -725,6 +725,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      restore_attendance_from_logs: { Args: never; Returns: number }
     }
     Enums: {
       app_role: "owner" | "admin" | "teacher"
