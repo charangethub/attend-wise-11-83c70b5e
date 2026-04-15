@@ -34,13 +34,7 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get Apps Script URL from system settings
-    const { data: scriptSetting } = await supabase.from('system_settings').select('value').eq('key', 'google_apps_script_url').single();
-    const scriptUrl = scriptSetting?.value;
-    if (!scriptUrl)
-      return new Response(JSON.stringify({ success: false, error: 'Apps Script URL not configured in System Settings' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    // ✅ FIX 2: Get active dataset to filter students correctly
+    // Get active dataset
     const { data: activeDataset } = await supabase
       .from('student_datasets')
       .select('slug, name')
@@ -49,87 +43,119 @@ Deno.serve(async (req) => {
       .single();
     const activeSlug = activeDataset?.slug ?? null;
 
-    // ✅ FIX 2: Filter students by active dataset only (not all datasets)
+    // Filter students by active dataset
     let studentsQuery = supabase.from('students').select('*').eq('enrollment_status', 'ENROLLED').neq('roll_no', '');
     if (activeSlug) studentsQuery = studentsQuery.eq('dataset', activeSlug);
     const { data: studentsData } = await studentsQuery;
 
-    // ✅ FIX 3: Include mobile_number and session in the attendance join
+    // Fetch attendance
     const { data: attData } = await supabase
       .from('attendance')
       .select('*, students(roll_no, student_name, classroom_name, curriculum, grade, center, mobile_number, emergency_contact_1, emergency_contact_2, user_id_vedantu)')
       .eq('date', date);
 
-    // Filter attendance to active dataset students only
     const activeStudentIds = new Set((studentsData ?? []).map((s: any) => s.id));
     const filteredAttData = (attData ?? []).filter((a: any) => activeStudentIds.has(a.student_id));
 
-    const absentees = filteredAttData.filter((a: any) => a.status === 'AB' || a.status === 'L');
+    const absentees = filteredAttData.filter((a: any) => a.status === 'A' || a.status === 'L');
     const presentCount = filteredAttData.filter((a: any) => a.status === 'P').length;
     const totalStudents = (studentsData ?? []).length;
 
-    // ✅ FIX 1: Add sync_master so the Students sheet in Google Sheets gets populated
-    //           This is required for buildStrengthMap() in Apps Script to work correctly
+    // Fetch all active sync targets
+    const { data: targets } = await supabase
+      .from('sync_targets')
+      .select('*')
+      .eq('is_active', true);
+
+    // Legacy fallback
+    const { data: legacySetting } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'google_apps_script_url')
+      .single();
+
+    const allTargets: { id: string; label: string; apps_script_url: string }[] = [...(targets ?? [])];
+    if (legacySetting?.value && allTargets.length === 0) {
+      allTargets.push({ id: 'legacy', label: 'Legacy URL', apps_script_url: legacySetting.value });
+    }
+
+    if (allTargets.length === 0) {
+      return new Response(JSON.stringify({ success: false, error: 'No sync targets configured' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const actions = [
+      { action: 'sync_master', students: studentsData ?? [] },
+      { action: 'sync_attendance', date, records: filteredAttData },
+      { action: 'sync_absentees', date, absentees },
       {
-        action: 'sync_master',
-        students: studentsData ?? [],
-      },
-      {
-        action: 'sync_attendance',
-        date,
-        records: filteredAttData,
-      },
-      {
-        action: 'sync_absentees',
-        date,
-        absentees,
-      },
-      {
-        // ✅ FIX 2: Use correct field names that Apps Script v6.6 expects
-        action: 'sync_analytics',
-        date,
-        total_students: totalStudents,
-        total: totalStudents,
-        present_count: presentCount,
-        present: presentCount,
-        absent_count: absentees.length,
-        absent: absentees.length,
+        action: 'sync_analytics', date,
+        total_students: totalStudents, total: totalStudents,
+        present_count: presentCount, present: presentCount,
+        absent_count: absentees.length, absent: absentees.length,
       },
     ];
 
-    // ✅ FIX 5: Collect errors instead of silently swallowing them
-    const results: { action: string; success: boolean; error?: string }[] = [];
-    for (const payload of actions) {
-      try {
-        const res = await fetch(scriptUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const text = await res.text().catch(() => '');
-          results.push({ action: payload.action, success: false, error: `HTTP ${res.status}: ${text.slice(0, 200)}` });
-        } else {
-          const json = await res.json().catch(() => ({}));
-          results.push({ action: payload.action, success: json.success !== false, error: json.error });
+    // Push to ALL active sync targets
+    const targetResults = await Promise.all(
+      allTargets.map(async (target) => {
+        const perActionResults: { action: string; success: boolean; error?: string }[] = [];
+        for (const payload of actions) {
+          try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+            const res = await fetch(target.apps_script_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+              signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            const text = await res.text();
+            const isHtml = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+            if (!res.ok || isHtml) {
+              perActionResults.push({ action: payload.action, success: false, error: `HTTP ${res.status}` });
+            } else {
+              try {
+                const json = JSON.parse(text);
+                perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
+              } catch {
+                perActionResults.push({ action: payload.action, success: true });
+              }
+            }
+          } catch (e: any) {
+            perActionResults.push({ action: payload.action, success: false, error: e?.message?.includes('abort') ? 'Timeout (10s)' : (e?.message ?? String(e)) });
+          }
         }
-      } catch (e: any) {
-        results.push({ action: payload.action, success: false, error: e?.message ?? String(e) });
-      }
+        const failures = perActionResults.filter(r => !r.success);
+        return {
+          label: target.label,
+          success: failures.length === 0,
+          synced: perActionResults.length - failures.length,
+          total_actions: perActionResults.length,
+          ...(failures.length > 0 ? { errors: failures.map(f => `${f.action}: ${f.error}`) } : {}),
+        };
+      })
+    );
+
+    const anySuccess = targetResults.some(r => r.success);
+
+    if (anySuccess) {
+      await supabase.from('system_settings').upsert(
+        { key: 'last_sync_at', value: new Date().toISOString() },
+        { onConflict: 'key' }
+      );
     }
 
-    const failures = results.filter(r => !r.success);
     return new Response(
       JSON.stringify({
-        success: failures.length === 0,
-        synced: actions.length - failures.length,
-        total_actions: actions.length,
+        success: anySuccess,
         dataset: activeSlug,
         total_students: totalStudents,
         attendance_records: filteredAttData.length,
-        results,
-        ...(failures.length > 0 ? { errors: failures.map(f => `${f.action}: ${f.error}`) } : {}),
+        results: targetResults,
+        ...(targetResults.some(r => !r.success) ? { errors: targetResults.filter(r => !r.success).flatMap(r => (r as any).errors ?? [`${r.label}: Failed`]) } : {}),
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

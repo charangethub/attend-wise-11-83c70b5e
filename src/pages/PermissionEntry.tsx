@@ -12,6 +12,7 @@ import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Trash
 import { useNavigate } from "react-router-dom";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
+import { logActivity } from "@/hooks/useActivityLog";
 
 type Student = { id: string; roll_no: string; student_name: string; classroom_name: string };
 type Permission = {
@@ -41,6 +42,7 @@ const PermissionEntry = () => {
   const [addOpen, setAddOpen] = useState(false);
 
   // Add dialog state
+  const [dialogBatchFilter, setDialogBatchFilter] = useState("all");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [permissionType, setPermissionType] = useState("Half Day Permission");
@@ -105,19 +107,24 @@ const PermissionEntry = () => {
   const fullDayCount = enrichedPermissions.filter(p => p.permission_type === "Full Day Permission").length;
   const halfDayCount = enrichedPermissions.filter(p => p.permission_type === "Half Day Permission").length;
 
-  // Student search for add dialog
+  // Student search for add dialog — filtered by batch
   const filteredStudents = useMemo(() => {
+    let pool = students;
+    if (dialogBatchFilter !== "all") {
+      pool = pool.filter(s => s.classroom_name === dialogBatchFilter);
+    }
     if (!studentSearch.trim()) return [];
     const q = studentSearch.toLowerCase();
-    return students.filter(s =>
+    return pool.filter(s =>
       s.student_name.toLowerCase().includes(q) || s.roll_no.toLowerCase().includes(q)
     ).slice(0, 10);
-  }, [students, studentSearch]);
+  }, [students, studentSearch, dialogBatchFilter]);
 
   const handleAdd = async () => {
     if (!selectedStudent || !user) { toast.error("Select a student"); return; }
     setSaving(true);
     try {
+      // 1. Insert permission
       const { error } = await supabase.from("student_permissions" as any).insert({
         student_id: selectedStudent.id,
         date: selectedDate,
@@ -128,11 +135,48 @@ const PermissionEntry = () => {
         dataset: activeSlug,
       } as any);
       if (error) throw error;
+
+      // 2. Auto-create attendance records based on permission type
+      const remarkText = reason.trim() || permissionType;
+      if (permissionType === "Half Day Permission") {
+        // AM = P, PM = A
+        await supabase.from("attendance").upsert([
+          { student_id: selectedStudent.id, date: selectedDate, session: "AM", status: "P", marked_by: user.id, remark: remarkText },
+          { student_id: selectedStudent.id, date: selectedDate, session: "PM", status: "A", marked_by: user.id, remark: remarkText },
+        ] as any[], { onConflict: "student_id,date,session" });
+      } else {
+        // Full Day = L for both sessions
+        await supabase.from("attendance").upsert([
+          { student_id: selectedStudent.id, date: selectedDate, session: "AM", status: "L", marked_by: user.id, remark: remarkText },
+          { student_id: selectedStudent.id, date: selectedDate, session: "PM", status: "L", marked_by: user.id, remark: remarkText },
+        ] as any[], { onConflict: "student_id,date,session" });
+      }
+
+      // 3. Log activity
+      await logActivity({
+        userId: user.id,
+        userEmail: user.email ?? "",
+        userName: user.user_metadata?.full_name ?? "",
+        action: "permission_added",
+        entityType: "student",
+        entityId: selectedStudent.id,
+        studentName: selectedStudent.student_name,
+        studentId: selectedStudent.id,
+        details: {
+          roll_no: selectedStudent.roll_no,
+          classroom: selectedStudent.classroom_name,
+          permission_type: permissionType,
+          reason: reason.trim(),
+          date: selectedDate,
+        },
+      });
+
       toast.success("Permission added!");
       setAddOpen(false);
       setSelectedStudent(null);
       setStudentSearch("");
       setReason("");
+      setDialogBatchFilter("all");
       void fetchData();
     } catch (e: any) {
       toast.error("Failed: " + (e.message || "Unknown error"));
@@ -301,13 +345,23 @@ const PermissionEntry = () => {
       )}
 
       {/* Add Permission Dialog */}
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setDialogBatchFilter("all"); setStudentSearch(""); setSelectedStudent(null); } }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Add Student Permission</DialogTitle>
             <DialogDescription>Search for a student and add a permission entry.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">Filter by Batch</label>
+              <Select value={dialogBatchFilter} onValueChange={(v) => { setDialogBatchFilter(v); setSelectedStudent(null); setStudentSearch(""); }}>
+                <SelectTrigger><SelectValue placeholder="All Batches" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Batches</SelectItem>
+                  {classrooms.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-sm font-medium mb-1.5 block">Search Student</label>
               <div className="relative">
