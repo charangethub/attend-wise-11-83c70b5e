@@ -21,6 +21,7 @@ import { format } from "date-fns";
 type UserRow = { user_id: string; email: string; full_name: string; role: string; status: string; pageAccess: Record<string, boolean>; };
 type Dataset = { id: string; name: string; slug: string; sheet_url: string; is_active: boolean; display_order: number; updated_at?: string; };
 type SyncTarget = { id: string; label: string; apps_script_url: string; purpose: string; is_active: boolean; created_at: string; };
+type PageMapping = { id: string; page_name: string; dataset_id: string | null; dataset_slug: string | null; dataset_name: string | null; };
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 60);
@@ -35,6 +36,7 @@ const AdminPanel = () => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [syncTargets, setSyncTargets] = useState<SyncTarget[]>([]);
+  const [pageMappings, setPageMappings] = useState<PageMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -48,8 +50,8 @@ const AdminPanel = () => {
   const [editDataset, setEditDataset] = useState<Dataset | null>(null);
   const [newDatasetName, setNewDatasetName] = useState("");
   const [newDatasetUrl, setNewDatasetUrl] = useState("");
+  const [newDatasetPages, setNewDatasetPages] = useState<string[]>([]);
   const [savingDataset, setSavingDataset] = useState(false);
-  const [switchingDataset, setSwitchingDataset] = useState<string | null>(null);
   const [syncingDataset, setSyncingDataset] = useState<string | null>(null);
   const [deletingDataset, setDeletingDataset] = useState<Dataset | null>(null);
   const [testingUrl, setTestingUrl] = useState<string | null>(null);
@@ -79,8 +81,9 @@ const AdminPanel = () => {
   const fetchSettings = async () => { const { data } = await supabase.from("system_settings").select("key, value"); const map: Record<string, string> = {}; (data ?? []).forEach((r: any) => { map[r.key] = r.value; }); setSettings(map); };
   const fetchDatasets = async () => { const { data, error } = await supabase.from("student_datasets").select("*").order("display_order", { ascending: true }); if (!error) setDatasets((data ?? []) as Dataset[]); };
   const fetchSyncTargets = async () => { const { data } = await supabase.from("sync_targets").select("*").order("created_at"); setSyncTargets((data ?? []) as SyncTarget[]); };
+  const fetchPageMappings = async () => { const { data } = await supabase.from("page_dataset_mapping").select("*"); setPageMappings((data ?? []) as PageMapping[]); };
 
-  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchUsers(), fetchSettings(), fetchDatasets(), fetchSyncTargets()]); setLoading(false); }; load(); }, []);
+  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchUsers(), fetchSettings(), fetchDatasets(), fetchSyncTargets(), fetchPageMappings()]); setLoading(false); }; load(); }, []);
 
   const updateRole = async (userId: string, role: string) => { await supabase.from("user_roles").upsert({ user_id: userId, role } as any, { onConflict: "user_id" }); fetchUsers(); toast.success("Role updated"); };
   const updateStatus = async (userId: string, status: string) => { await supabase.from("user_status").upsert({ user_id: userId, status } as any, { onConflict: "user_id" }); fetchUsers(); toast.success("Status updated"); };
@@ -89,16 +92,90 @@ const AdminPanel = () => {
   const confirmDeleteUser = async () => { if (!deleteTarget) return; const userId = deleteTarget.user_id; await Promise.all([supabase.from("user_roles").delete().eq("user_id", userId), supabase.from("user_status").delete().eq("user_id", userId), supabase.from("page_access").delete().eq("user_id", userId), supabase.from("profiles").delete().eq("user_id", userId)]); setDeleteTarget(null); fetchUsers(); toast.success("User removed"); };
   const handleCreateUser = async () => { if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword) { toast.error("Fill in all fields"); return; } if (newUserPassword.length < 6) { toast.error("Password must be at least 6 characters"); return; } setCreatingUser(true); try { const { data, error } = await supabase.functions.invoke("create-user", { body: { email: newUserEmail.trim(), password: newUserPassword, full_name: newUserName.trim(), role: newUserRole } }); if (error) throw error; if (data?.error) { toast.error(data.error); setCreatingUser(false); return; } toast.success("User created!"); setCreateDialogOpen(false); setNewUserName(""); setNewUserEmail(""); setNewUserPassword(""); setNewUserRole("teacher"); fetchUsers(); } catch (err: any) { toast.error("Failed: " + (err.message || "Unknown error")); } setCreatingUser(false); };
 
-  const activeDataset = datasets.find(d => d.is_active);
-  const switchDataset = async (slug: string) => { setSwitchingDataset(slug); try { await supabase.from("student_datasets").update({ is_active: false } as any).neq("slug", "__none__"); await supabase.from("student_datasets").update({ is_active: true } as any).eq("slug", slug); await fetchDatasets(); await queryClient.invalidateQueries({ queryKey: ["active-dataset"] }); const ds = datasets.find(d => d.slug === slug); toast.success(`Switched to "${ds?.name}"`); } catch { toast.error("Failed to switch dataset"); } setSwitchingDataset(null); };
-
   const syncDataset = async (slug: string) => { setSyncingDataset(slug); try { const { data, error } = await supabase.functions.invoke("sync-google-sheet", { body: { dataset_slug: slug } }); if (error) throw error; if (data?.success) { const warn = data.warning ? ` (⚠️ ${data.warning})` : ''; toast.success(`✅ Synced ${data.synced} of ${data.total} students from "${data.dataset_name}"${warn}`, { duration: 6000 }); fetchDatasets(); fetchSettings(); } else { toast.error(`❌ Sync failed: ${data?.error || "Unknown error"}`, { duration: 12000 }); } } catch (err: any) { toast.error(`❌ Sync failed: ${err?.message || "Check URL"}`); } setSyncingDataset(null); };
 
   const testDatasetUrl = async (slug: string, url: string) => { if (!url) { toast.error("No URL configured"); return; } setTestingUrl(slug); try { let csvUrl = url; if (csvUrl.includes('/pubhtml')) csvUrl = csvUrl.replace('/pubhtml', '/pub'); if (!csvUrl.includes('output=csv')) csvUrl += (csvUrl.includes('?') ? '&' : '?') + 'output=csv'; const res = await fetch(csvUrl); const text = await res.text(); if (text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html')) { toast.error("URL returned HTML — check gid and output=csv"); } else { const rowCount = text.split('\n').filter(r => r.trim()).length - 1; toast.success(`✅ Valid! ${rowCount} student rows`); } } catch { toast.error("Could not reach URL"); } setTestingUrl(null); };
 
-  const saveDataset = async () => { if (!newDatasetName.trim()) { toast.error("Enter a dataset name"); return; } setSavingDataset(true); try { const slug = toSlug(newDatasetName); if (editDataset) { await supabase.from("student_datasets").update({ name: newDatasetName.trim(), sheet_url: newDatasetUrl.trim(), updated_at: new Date().toISOString() } as any).eq("id", editDataset.id); toast.success(`Updated "${newDatasetName}"`); } else { const maxOrder = datasets.reduce((m, d) => Math.max(m, d.display_order), 0); const { error } = await supabase.from("student_datasets").insert({ name: newDatasetName.trim(), slug, sheet_url: newDatasetUrl.trim(), is_active: false, display_order: maxOrder + 1 } as any); if (error) { if (error.message?.includes('unique') || error.code === '23505') toast.error(`Dataset with similar name exists`); else throw error; setSavingDataset(false); return; } toast.success(`Added "${newDatasetName}"`); } setAddDatasetOpen(false); setEditDataset(null); setNewDatasetName(""); setNewDatasetUrl(""); await fetchDatasets(); } catch (err: any) { toast.error("Failed: " + (err.message || "Unknown")); } setSavingDataset(false); };
-  const openEdit = (ds: Dataset) => { setEditDataset(ds); setNewDatasetName(ds.name); setNewDatasetUrl(ds.sheet_url); setAddDatasetOpen(true); };
-  const confirmDeleteDataset = async () => { if (!deletingDataset) return; if (deletingDataset.is_active) { toast.error("Cannot delete active dataset."); setDeletingDataset(null); return; } try { await supabase.from("students").delete().eq("dataset", deletingDataset.slug); await supabase.from("student_datasets").delete().eq("id", deletingDataset.id); toast.success(`Deleted "${deletingDataset.name}"`); fetchDatasets(); } catch { toast.error("Failed to delete"); } setDeletingDataset(null); };
+  // Get pages currently mapped to a dataset
+  const getPagesForDataset = (datasetId: string): string[] => {
+    return pageMappings.filter(m => m.dataset_id === datasetId).map(m => m.page_name);
+  };
+
+  const saveDataset = async () => {
+    if (!newDatasetName.trim()) { toast.error("Enter a dataset name"); return; }
+    setSavingDataset(true);
+    try {
+      const slug = editDataset ? editDataset.slug : toSlug(newDatasetName);
+      let datasetId = editDataset?.id;
+
+      if (editDataset) {
+        await supabase.from("student_datasets").update({ name: newDatasetName.trim(), sheet_url: newDatasetUrl.trim(), is_active: true, updated_at: new Date().toISOString() } as any).eq("id", editDataset.id);
+      } else {
+        const maxOrder = datasets.reduce((m, d) => Math.max(m, d.display_order), 0);
+        const { data: inserted, error } = await supabase.from("student_datasets").insert({ name: newDatasetName.trim(), slug, sheet_url: newDatasetUrl.trim(), is_active: true, display_order: maxOrder + 1 } as any).select("id").single();
+        if (error) {
+          if (error.message?.includes('unique') || error.code === '23505') toast.error(`Dataset with similar name exists`);
+          else throw error;
+          setSavingDataset(false); return;
+        }
+        datasetId = (inserted as any)?.id;
+      }
+
+      // Update page_dataset_mapping for selected pages
+      if (datasetId) {
+        // Remove old mappings for this dataset
+        await supabase.from("page_dataset_mapping").delete().eq("dataset_id", datasetId);
+        // Insert new mappings
+        if (newDatasetPages.length > 0) {
+          const mappings = newDatasetPages.map(pageName => ({
+            page_name: pageName,
+            dataset_id: datasetId,
+            dataset_slug: slug,
+            dataset_name: newDatasetName.trim(),
+          }));
+          // Remove existing mappings for these pages from other datasets
+          for (const pageName of newDatasetPages) {
+            await supabase.from("page_dataset_mapping").delete().eq("page_name", pageName).neq("dataset_id", datasetId!);
+          }
+          await supabase.from("page_dataset_mapping").insert(mappings as any);
+        }
+      }
+
+      toast.success(editDataset ? `Updated "${newDatasetName}"` : `Added "${newDatasetName}"`);
+      setAddDatasetOpen(false); setEditDataset(null); setNewDatasetName(""); setNewDatasetUrl(""); setNewDatasetPages([]);
+      await Promise.all([fetchDatasets(), fetchPageMappings()]);
+    } catch (err: any) { toast.error("Failed: " + (err.message || "Unknown")); }
+    setSavingDataset(false);
+  };
+
+  const openEdit = (ds: Dataset) => {
+    setEditDataset(ds);
+    setNewDatasetName(ds.name);
+    setNewDatasetUrl(ds.sheet_url);
+    setNewDatasetPages(getPagesForDataset(ds.id));
+    setAddDatasetOpen(true);
+  };
+
+  const openAddNew = () => {
+    setEditDataset(null);
+    setNewDatasetName("");
+    setNewDatasetUrl("");
+    setNewDatasetPages([]);
+    setAddDatasetOpen(true);
+  };
+
+  const confirmDeleteDataset = async () => {
+    if (!deletingDataset) return;
+    try {
+      await supabase.from("page_dataset_mapping").delete().eq("dataset_id", deletingDataset.id);
+      await supabase.from("students").delete().eq("dataset", deletingDataset.slug);
+      await supabase.from("student_datasets").delete().eq("id", deletingDataset.id);
+      toast.success(`Deleted "${deletingDataset.name}"`);
+      await Promise.all([fetchDatasets(), fetchPageMappings()]);
+    } catch { toast.error("Failed to delete"); }
+    setDeletingDataset(null);
+  };
+
   const saveSettings = async () => { setSavingSettings(true); try { for (const [key, value] of Object.entries(settings)) { await supabase.from("system_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any, { onConflict: "key" }); } toast.success("Settings saved!"); await queryClient.invalidateQueries({ queryKey: ["system-settings"] }); } catch { toast.error("Failed to save"); } setSavingSettings(false); };
 
   // Sync targets
@@ -143,6 +220,10 @@ const AdminPanel = () => {
 
   const lastSyncAt = settings.last_sync_at;
 
+  const toggleDatasetPage = (page: string) => {
+    setNewDatasetPages(prev => prev.includes(page) ? prev.filter(p => p !== page) : [...prev, page]);
+  };
+
   if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
 
   return (
@@ -178,12 +259,36 @@ const AdminPanel = () => {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove User</AlertDialogTitle><AlertDialogDescription>Permanently remove <strong>{deleteTarget?.full_name}</strong>?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Remove</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
       <AlertDialog open={!!deletingDataset} onOpenChange={(open) => { if (!open) setDeletingDataset(null); }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Dataset</AlertDialogTitle><AlertDialogDescription>Delete <strong>"{deletingDataset?.name}"</strong> and all its student records?</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={confirmDeleteDataset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete Dataset</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 
-      <Dialog open={addDatasetOpen} onOpenChange={(open) => { setAddDatasetOpen(open); if (!open) { setEditDataset(null); setNewDatasetName(""); setNewDatasetUrl(""); } }}>
+      {/* Add/Edit Dataset Dialog */}
+      <Dialog open={addDatasetOpen} onOpenChange={(open) => { setAddDatasetOpen(open); if (!open) { setEditDataset(null); setNewDatasetName(""); setNewDatasetUrl(""); setNewDatasetPages([]); } }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editDataset ? "Edit Dataset" : "Add New Dataset"}</DialogTitle><DialogDescription>{editDataset ? "Update the name or CSV URL." : "Add a new student sheet tab."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editDataset ? "Edit Dataset" : "Add New Dataset"}</DialogTitle><DialogDescription>{editDataset ? "Update name, URL, and page mappings." : "Add a new student data source and assign it to dashboards."}</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-2"><Label>Dataset Name <span className="text-destructive">*</span></Label><Input placeholder="e.g. Master List Adilabad" value={newDatasetName} onChange={(e) => setNewDatasetName(e.target.value)} />{newDatasetName && <p className="text-xs text-muted-foreground">Internal ID: <code className="bg-muted px-1 rounded">{toSlug(newDatasetName)}</code></p>}</div>
+            <div className="space-y-2"><Label>Dataset Name <span className="text-destructive">*</span></Label><Input placeholder="e.g. Master List Adilabad" value={newDatasetName} onChange={(e) => setNewDatasetName(e.target.value)} />{newDatasetName && !editDataset && <p className="text-xs text-muted-foreground">Internal ID: <code className="bg-muted px-1 rounded">{toSlug(newDatasetName)}</code></p>}</div>
             <div className="space-y-2"><Label>Google Sheet CSV URL</Label><Input placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?gid=...&output=csv" value={newDatasetUrl} onChange={(e) => setNewDatasetUrl(e.target.value)} className="text-xs" /></div>
+            <div className="space-y-2">
+              <Label>Linked Navigation Pages</Label>
+              <p className="text-xs text-muted-foreground">Select which dashboards will use this dataset's students.</p>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {PAGE_OPTIONS.map(page => {
+                  const isSelected = newDatasetPages.includes(page);
+                  // Check if another dataset already claims this page
+                  const otherMapping = pageMappings.find(m => m.page_name === page && m.dataset_id !== editDataset?.id);
+                  return (
+                    <label key={page} className={`flex items-center gap-2 text-sm cursor-pointer rounded-lg border px-3 py-2 transition-colors ${isSelected ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"}`}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleDatasetPage(page)}
+                      />
+                      <span className="flex-1">{page}</span>
+                      {otherMapping && !isSelected && (
+                        <span className="text-[10px] text-amber-600">({pageMappings.find(m => m.page_name === page)?.dataset_name})</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => { setAddDatasetOpen(false); setEditDataset(null); }}>Cancel</Button><Button onClick={saveDataset} disabled={savingDataset || !newDatasetName.trim()}>{savingDataset ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Saving...</> : (editDataset ? "Save Changes" : "Add Dataset")}</Button></DialogFooter>
         </DialogContent>
@@ -203,26 +308,45 @@ const AdminPanel = () => {
 
       {tab === "datasets" && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between"><div><h3 className="text-lg font-bold text-foreground">Student Datasets</h3><p className="text-sm text-muted-foreground mt-0.5">Switch active dataset to change which students the website shows.</p></div><Button onClick={() => setAddDatasetOpen(true)} className="gap-1.5 shrink-0"><Plus className="h-4 w-4" /> Add New Dataset</Button></div>
-          {activeDataset && <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-300 px-4 py-3 text-sm text-green-800"><CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" /><span>Currently showing: <strong>{activeDataset.name}</strong></span></div>}
+          <div className="flex items-center justify-between">
+            <div><h3 className="text-lg font-bold text-foreground">Student Datasets</h3><p className="text-sm text-muted-foreground mt-0.5">Each dataset can be linked to specific navigation pages/dashboards.</p></div>
+            <Button onClick={openAddNew} className="gap-1.5 shrink-0"><Plus className="h-4 w-4" /> Add New Dataset</Button>
+          </div>
+
           <div className="space-y-3">
             {datasets.map((ds) => {
-              const isActive = ds.is_active; const isSyncing = syncingDataset === ds.slug; const isSwitching = switchingDataset === ds.slug; const isTesting = testingUrl === ds.slug; const hasUrl = !!ds.sheet_url?.trim();
+              const isSyncing = syncingDataset === ds.slug;
+              const isTesting = testingUrl === ds.slug;
+              const hasUrl = !!ds.sheet_url?.trim();
+              const linkedPages = getPagesForDataset(ds.id);
+
               return (
-                <div key={ds.id} className={`rounded-xl border-2 p-5 transition-all ${isActive ? "border-green-400 bg-green-50/60 shadow-sm" : "border-border bg-card hover:border-muted-foreground/30"}`}>
+                <div key={ds.id} className="rounded-xl border-2 border-border bg-card p-5 hover:border-muted-foreground/30 transition-all">
                   <div className="flex flex-wrap items-start gap-3">
-                    <div className="mt-0.5">{isActive ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Circle className="h-5 w-5 text-muted-foreground" />}</div>
+                    <div className="mt-0.5"><BookOpen className="h-5 w-5 text-primary" /></div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap"><span className={`font-bold text-base ${isActive ? "text-green-800" : "text-foreground"}`}>{ds.name}</span>{isActive && <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full font-semibold">● ACTIVE</span>}<span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded font-mono">{ds.slug}</span></div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-base text-foreground">{ds.name}</span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded font-mono">{ds.slug}</span>
+                      </div>
                       {hasUrl ? <p className="text-xs text-muted-foreground mt-1 truncate max-w-xl">{ds.sheet_url.slice(0, 80)}...</p> : <p className="text-xs text-amber-600 mt-1 flex items-center gap-1"><Info className="h-3.5 w-3.5" /> No CSV URL — click Edit</p>}
                       {ds.updated_at && <p className="text-xs text-muted-foreground mt-0.5">Last synced: {format(new Date(ds.updated_at), "dd MMM yyyy, hh:mm a")}</p>}
+                      {/* Show linked pages */}
+                      {linkedPages.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {linkedPages.map(p => (
+                            <span key={p} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-semibold">{p}</span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-600 mt-2 flex items-center gap-1"><Info className="h-3.5 w-3.5" /> Not linked to any page — click Edit to assign</p>
+                      )}
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
                       {hasUrl && <Button variant="outline" size="sm" onClick={() => testDatasetUrl(ds.slug, ds.sheet_url)} disabled={isTesting} className="gap-1 h-8 text-xs">{isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Test URL</Button>}
                       <Button variant="outline" size="sm" onClick={() => syncDataset(ds.slug)} disabled={isSyncing || !hasUrl} className="gap-1 h-8 text-xs">{isSyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}{isSyncing ? "Syncing..." : "Sync from Sheet"}</Button>
-                      {!isActive && <Button size="sm" onClick={() => switchDataset(ds.slug)} disabled={!!switchingDataset} className="gap-1 h-8 text-xs bg-green-600 hover:bg-green-700 text-white">{isSwitching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{isSwitching ? "Switching..." : "Set Active"}</Button>}
                       <Button variant="outline" size="sm" onClick={() => openEdit(ds)} className="gap-1 h-8 text-xs"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
-                      {!isActive && <Button variant="outline" size="sm" onClick={() => setDeletingDataset(ds)} className="gap-1 h-8 text-xs text-destructive hover:bg-destructive/10 border-destructive/30"><Trash2 className="h-3.5 w-3.5" /></Button>}
+                      <Button variant="outline" size="sm" onClick={() => setDeletingDataset(ds)} className="gap-1 h-8 text-xs text-destructive hover:bg-destructive/10 border-destructive/30"><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </div>
                 </div>

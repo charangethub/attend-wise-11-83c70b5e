@@ -5,16 +5,23 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Search, Package } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Package, Upload, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
 
-const ITEM_TYPES = ["BAG", "CLICKER", "DIARY", "FACE_ID_REG", "HOLDER_ID_CARD", "HW_PLANNER"] as const;
+const ITEM_TYPES = [
+  "BAG", "CLICKER", "DIARY", "FACE_ID_REG", "HOLDER_ID_CARD", "HW_PLANNER",
+  "ID_CARD", "IPE_BOOK", "LYANARD", "T_SHIRT", "TATVA", "VDPP"
+] as const;
+
 const ITEM_LABELS: Record<string, string> = {
   BAG: "BAG", CLICKER: "CLICKER", DIARY: "DIARY",
-  FACE_ID_REG: "FACE ID REG", HOLDER_ID_CARD: "HOLDER- ID CARD", HW_PLANNER: "HW PLANNER"
+  FACE_ID_REG: "FACE ID REG", HOLDER_ID_CARD: "HOLDER- ID CARD", HW_PLANNER: "HW PLANNER",
+  ID_CARD: "ID CARD", IPE_BOOK: "IPE BOOK", LYANARD: "LYANARD",
+  T_SHIRT: "T-SHIRT", TATVA: "TATVA", VDPP: "VDPP"
 };
 
 type Student = { id: string; roll_no: string; student_name: string; classroom_name: string; center: string; user_id_vedantu: string };
@@ -23,7 +30,7 @@ type DistStatus = { student_id: string; item_type: string; status: string; given
 const DistributionStatus = () => {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug } = usePageDataset("Distribution Status");
   const isAdminOrOwner = userRole === "owner" || userRole === "admin";
   const isOwner = userRole === "owner";
 
@@ -34,6 +41,8 @@ const DistributionStatus = () => {
   const [statusFilterType, setStatusFilterType] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -41,10 +50,10 @@ const DistributionStatus = () => {
   }, [searchQuery]);
 
   const fetchData = useCallback(async () => {
-    if (!activeSlug) return;
+    if (!datasetSlug) return;
     setLoading(true);
     try {
-      const stuRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, classroom_name, center, user_id_vedantu");
+      const stuRows = await fetchDatasetStudents<Student>(datasetSlug, "id, roll_no, student_name, classroom_name, center, user_id_vedantu");
       setStudents(stuRows);
 
       const ids = stuRows.map(s => s.id);
@@ -68,7 +77,7 @@ const DistributionStatus = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeSlug]);
+  }, [datasetSlug]);
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
@@ -85,7 +94,6 @@ const DistributionStatus = () => {
     }).sort((a, b) => a.roll_no.localeCompare(b.roll_no));
   }, [students, classroomFilter, debouncedSearch]);
 
-  // Summary counts
   const summaries = useMemo(() => {
     const counts: Record<string, { given: number; total: number }> = {};
     ITEM_TYPES.forEach(t => { counts[t] = { given: 0, total: students.length }; });
@@ -109,7 +117,7 @@ const DistributionStatus = () => {
         status: newStatus,
         given_date: newStatus === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
         given_by: newStatus === "GIVEN" ? user?.id : null,
-        dataset: activeSlug,
+        dataset: datasetSlug,
       } as any, { onConflict: "student_id,item_type" });
       if (error) throw error;
 
@@ -128,6 +136,73 @@ const DistributionStatus = () => {
     }
   };
 
+  const downloadTemplate = () => {
+    const header = ["roll_no", ...ITEM_TYPES.map(t => t)].join(",");
+    const sampleRow = ["ROLL001", ...ITEM_TYPES.map(() => "GIVEN")].join(",");
+    const csv = `${header}\n${sampleRow}\n`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "distribution_status_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvUploading(true);
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+
+      const headers = lines[0].split(",").map(h => h.trim().toUpperCase());
+      const rollIdx = headers.findIndex(h => h === "ROLL_NO" || h === "ROLL NO");
+      if (rollIdx === -1) { toast.error("CSV must have a 'roll_no' column"); setCsvUploading(false); return; }
+
+      // Map roll_no to student id
+      const rollMap = new Map(students.map(s => [s.roll_no.toUpperCase(), s.id]));
+      const upserts: any[] = [];
+      let skipped = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map(c => c.trim());
+        const rollNo = cols[rollIdx]?.toUpperCase();
+        const studentId = rollMap.get(rollNo);
+        if (!studentId) { skipped++; continue; }
+
+        headers.forEach((h, idx) => {
+          if (idx === rollIdx) return;
+          const itemType = h.replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+          if (!ITEM_TYPES.includes(itemType as any)) return;
+          const val = cols[idx]?.toUpperCase();
+          if (val === "GIVEN" || val === "PENDING") {
+            upserts.push({
+              student_id: studentId,
+              item_type: itemType,
+              status: val,
+              given_date: val === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
+              given_by: val === "GIVEN" ? user?.id : null,
+              dataset: datasetSlug,
+            });
+          }
+        });
+      }
+
+      if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+
+      // Upsert in chunks
+      for (let i = 0; i < upserts.length; i += 50) {
+        await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type" });
+      }
+
+      toast.success(`Uploaded ${upserts.length} records (${skipped} skipped)`);
+      setCsvUploadOpen(false);
+      fetchData();
+    } catch (err: any) { toast.error("Upload failed: " + err.message); }
+    setCsvUploading(false);
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -140,7 +215,14 @@ const DistributionStatus = () => {
             <h2 className="text-2xl font-bold text-foreground">Distribution Status</h2>
           </div>
         </div>
-        <Button variant="outline" onClick={fetchData} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Refresh Data</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {isOwner && (
+            <Button variant="outline" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
+              <Upload className="h-4 w-4" /> Upload CSV
+            </Button>
+          )}
+          <Button variant="outline" onClick={fetchData} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Refresh Data</Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -153,7 +235,7 @@ const DistributionStatus = () => {
           <div key={t} className="rounded-xl border border-border bg-card p-4">
             <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
             <p className="text-lg font-bold">
-              <span className={summaries[t]?.given > 0 ? "text-success" : "text-destructive"}>{summaries[t]?.given ?? 0}</span>
+              <span className={summaries[t]?.given > 0 ? "text-green-500" : "text-destructive"}>{summaries[t]?.given ?? 0}</span>
               <span className="text-muted-foreground text-sm"> / {summaries[t]?.total ?? 0}</span>
             </p>
           </div>
@@ -164,7 +246,7 @@ const DistributionStatus = () => {
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-1">
           <Button variant={statusFilterType === "all" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("all")}
-            className={statusFilterType === "all" ? "bg-success text-success-foreground" : ""}>Given</Button>
+            className={statusFilterType === "all" ? "bg-green-600 text-white hover:bg-green-700" : ""}>Given</Button>
           <Button variant={statusFilterType === "pending" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("pending")}
             className={statusFilterType === "pending" ? "bg-destructive text-destructive-foreground" : ""}>Pending</Button>
         </div>
@@ -179,6 +261,14 @@ const DistributionStatus = () => {
             {classrooms.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={statusFilterType} onValueChange={setStatusFilterType}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="All Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="given">Given Only</SelectItem>
+            <SelectItem value="pending">Pending Only</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -186,26 +276,23 @@ const DistributionStatus = () => {
       ) : (
         <div className="rounded-lg border border-border overflow-auto">
           <table className="w-full text-sm">
-            <thead><tr className="bg-muted/50">
-              <th className="px-3 py-2.5 text-left font-semibold">CENTER NAME</th>
-              {isOwner && <th className="px-3 py-2.5 text-left font-semibold">USER ID</th>}
-              <th className="px-3 py-2.5 text-left font-semibold">ROLL NO</th>
-              <th className="px-3 py-2.5 text-left font-semibold">NAME OF THE STUDENT</th>
-              <th className="px-3 py-2.5 text-left font-semibold">CLASSROOM NAME</th>
+            <thead><tr className="bg-muted/50 sticky top-0 z-10">
+              <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap"></th>
               {ITEM_TYPES.map(t => (
-                <th key={t} className="px-3 py-2.5 text-center font-semibold">{ITEM_LABELS[t]}</th>
+                <th key={t} className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">{ITEM_LABELS[t]}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.map((s, i) => (
                 <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
-                  <td className="px-3 py-2.5">{s.center || "—"}</td>
-                  {isOwner && <td className="px-3 py-2.5 text-xs text-muted-foreground font-mono">{s.user_id_vedantu || "—"}</td>}
-                  <td className="px-3 py-2.5 font-medium">{s.roll_no}</td>
-                  <td className="px-3 py-2.5">{s.student_name}</td>
-                  <td className="px-3 py-2.5 text-muted-foreground">{s.classroom_name}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap">
+                    <span className="font-medium">{s.student_name}</span>
+                    <span className="text-xs text-muted-foreground ml-1">({s.roll_no})</span>
+                  </td>
                   {ITEM_TYPES.map(t => {
                     const status = distMap[s.id]?.[t]?.status || "PENDING";
+                    if (statusFilterType === "given" && status !== "GIVEN") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
+                    if (statusFilterType === "pending" && status !== "PENDING") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     return (
                       <td key={t} className="px-3 py-2.5 text-center">
                         <button
@@ -213,7 +300,7 @@ const DistributionStatus = () => {
                           disabled={!isAdminOrOwner}
                           className={`rounded px-2.5 py-1 text-[10px] font-bold transition-colors ${
                             status === "GIVEN"
-                              ? "bg-success text-success-foreground"
+                              ? "bg-green-600 text-white"
                               : "bg-destructive text-destructive-foreground"
                           } ${!isAdminOrOwner ? "cursor-default" : "hover:opacity-80"}`}
                         >
@@ -228,6 +315,33 @@ const DistributionStatus = () => {
           </table>
         </div>
       )}
+
+      {/* CSV Upload Dialog */}
+      <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Distribution CSV</DialogTitle>
+            <DialogDescription>Upload a CSV file to bulk update distribution statuses.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Button variant="outline" onClick={downloadTemplate} className="gap-1.5 w-full">
+              <Download className="h-4 w-4" /> Download CSV Template
+            </Button>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p><strong>Template columns:</strong> roll_no, then item type columns (BAG, CLICKER, DIARY, etc.)</p>
+              <p><strong>Values:</strong> Use GIVEN or PENDING in each cell</p>
+              <p>Students are matched by roll_no. Unknown roll numbers are skipped.</p>
+            </div>
+            <Input
+              type="file"
+              accept=".csv"
+              onChange={handleCsvUpload}
+              disabled={csvUploading}
+            />
+            {csvUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "sonner";
 import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { logActivity } from "@/hooks/useActivityLog";
 import RemarkDialog from "@/components/RemarkDialog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
@@ -33,7 +33,7 @@ const readSessionJson = <T,>(key: string, fallback: T): T => {
 const AttendanceDashboard = () => {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
-  const { activeSlug, activeName } = useActiveDataset();
+  const { datasetSlug: activeSlug, datasetName: activeName } = usePageDataset("Mark Attendance");
   const today = format(new Date(), "yyyy-MM-dd");
   const [selectedDate, setSelectedDate] = useState(() => sessionStorage.getItem("att-date") || today);
   const [students, setStudents] = useState<Student[]>([]);

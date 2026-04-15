@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format, subDays } from "date-fns";
 import { Users, UserCheck, UserX, Clock, UserPlus, UserMinus, AlertCircle, BarChart3, UsersRound } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { getCombinedStatus } from "@/lib/attendanceSession";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
@@ -19,7 +19,7 @@ const DashboardAnalytics = () => {
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
   const weekAgo = format(subDays(new Date(), 6), "yyyy-MM-dd");
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Dashboard");
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;

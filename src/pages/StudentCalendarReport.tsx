@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Search, CalendarDays } from "lucide-react";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { getCombinedStatus } from "@/lib/attendanceSession";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents, getCombinedRemarkText } from "@/lib/attendanceData";
@@ -41,7 +41,7 @@ const StudentCalendarReport = () => {
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [enrollmentFilter, setEnrollmentFilter] = useState("ENROLLED");
   const [searchQuery, setSearchQuery] = useState("");
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Student Calendar");
 
   const currentDate = new Date(year, month);
   const monthStart = format(startOfMonth(currentDate), "yyyy-MM-dd");

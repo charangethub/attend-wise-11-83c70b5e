@@ -3,7 +3,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, subMonths, addMont
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, CalendarDays, TrendingUp, Users } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from "recharts";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 
@@ -14,7 +14,7 @@ const MonthlyAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Dashboard");
 
   const monthStart = format(startOfMonth(currentMonth), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(currentMonth), "yyyy-MM-dd");

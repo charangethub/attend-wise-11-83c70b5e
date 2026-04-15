@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { ArrowLeft, Download, MessageCircle, CalendarDays, Search, Phone, RefreshCw, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import CallLogDialog from "@/components/CallLogDialog";
 import CallHistoryDialog from "@/components/CallHistoryDialog";
 import { logActivity } from "@/hooks/useActivityLog";
@@ -18,7 +18,7 @@ import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendan
 const AbsenteeDashboard = () => {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Absentee Report");
   const isAdminOrOwner = userRole === "owner" || userRole === "admin";
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [students, setStudents] = useState<any[]>([]);
