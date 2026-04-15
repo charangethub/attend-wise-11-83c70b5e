@@ -64,14 +64,16 @@ export function usePageDataset(pageName: string): UsePageDatasetResult {
 
   // Listen for mapping changes
   useEffect(() => {
+    const channelName = `page-dataset-${pageName}-${Date.now()}`;
     const channel = supabase
-      .channel(`page-dataset-${pageName}-${Date.now()}`)
+      .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "page_dataset_mapping" }, () => {
-        void fetchMapping();
+        setTick(t => t + 1);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [fetchMapping, pageName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageName]);
 
   return {
     datasetSlug,
