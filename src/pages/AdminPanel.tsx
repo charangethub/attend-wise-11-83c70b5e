@@ -65,6 +65,10 @@ const AdminPanel = () => {
   const [savingTarget, setSavingTarget] = useState(false);
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
   const [restoringAttendance, setRestoringAttendance] = useState(false);
+  const [restoreMode, setRestoreMode] = useState<"day" | "month" | "all">("day");
+  const [restoreDate, setRestoreDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [restoreMonth, setRestoreMonth] = useState(String(new Date().getMonth() + 1));
+  const [restoreYear, setRestoreYear] = useState(String(new Date().getFullYear()));
 
   const fetchUsers = async () => {
     const [{ data: profiles }, { data: roles }, { data: statuses }, { data: access }] = await Promise.all([
