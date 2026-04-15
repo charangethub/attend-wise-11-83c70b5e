@@ -725,7 +725,12 @@ export type Database = {
         }
         Returns: boolean
       }
-      restore_attendance_from_logs: { Args: never; Returns: number }
+      restore_attendance_from_logs:
+        | { Args: never; Returns: number }
+        | {
+            Args: { _date?: string; _month?: number; _year?: number }
+            Returns: number
+          }
     }
     Enums: {
       app_role: "owner" | "admin" | "teacher"
