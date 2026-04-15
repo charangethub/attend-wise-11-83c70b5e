@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,6 +20,7 @@ import { format } from "date-fns";
 
 type UserRow = { user_id: string; email: string; full_name: string; role: string; status: string; pageAccess: Record<string, boolean>; };
 type Dataset = { id: string; name: string; slug: string; sheet_url: string; is_active: boolean; display_order: number; updated_at?: string; };
+type SyncTarget = { id: string; label: string; apps_script_url: string; purpose: string; is_active: boolean; created_at: string; };
 
 function toSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 60);
@@ -32,6 +34,7 @@ const AdminPanel = () => {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [syncTargets, setSyncTargets] = useState<SyncTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -51,7 +54,14 @@ const AdminPanel = () => {
   const [deletingDataset, setDeletingDataset] = useState<Dataset | null>(null);
   const [testingUrl, setTestingUrl] = useState<string | null>(null);
   const [syncingPush, setSyncingPush] = useState(false);
-  const [testingScriptUrl, setTestingScriptUrl] = useState(false);
+
+  // Sync target dialog state
+  const [addSyncTargetOpen, setAddSyncTargetOpen] = useState(false);
+  const [editSyncTarget, setEditSyncTarget] = useState<SyncTarget | null>(null);
+  const [newTargetLabel, setNewTargetLabel] = useState("");
+  const [newTargetUrl, setNewTargetUrl] = useState("");
+  const [savingTarget, setSavingTarget] = useState(false);
+  const [testingTarget, setTestingTarget] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     const [{ data: profiles }, { data: roles }, { data: statuses }, { data: access }] = await Promise.all([
@@ -68,8 +78,9 @@ const AdminPanel = () => {
   };
   const fetchSettings = async () => { const { data } = await supabase.from("system_settings").select("key, value"); const map: Record<string, string> = {}; (data ?? []).forEach((r: any) => { map[r.key] = r.value; }); setSettings(map); };
   const fetchDatasets = async () => { const { data, error } = await supabase.from("student_datasets").select("*").order("display_order", { ascending: true }); if (!error) setDatasets((data ?? []) as Dataset[]); };
+  const fetchSyncTargets = async () => { const { data } = await supabase.from("sync_targets").select("*").order("created_at"); setSyncTargets((data ?? []) as SyncTarget[]); };
 
-  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchUsers(), fetchSettings(), fetchDatasets()]); setLoading(false); }; load(); }, []);
+  useEffect(() => { const load = async () => { setLoading(true); await Promise.all([fetchUsers(), fetchSettings(), fetchDatasets(), fetchSyncTargets()]); setLoading(false); }; load(); }, []);
 
   const updateRole = async (userId: string, role: string) => { await supabase.from("user_roles").upsert({ user_id: userId, role } as any, { onConflict: "user_id" }); fetchUsers(); toast.success("Role updated"); };
   const updateStatus = async (userId: string, status: string) => { await supabase.from("user_status").upsert({ user_id: userId, status } as any, { onConflict: "user_id" }); fetchUsers(); toast.success("Status updated"); };
@@ -89,8 +100,47 @@ const AdminPanel = () => {
   const openEdit = (ds: Dataset) => { setEditDataset(ds); setNewDatasetName(ds.name); setNewDatasetUrl(ds.sheet_url); setAddDatasetOpen(true); };
   const confirmDeleteDataset = async () => { if (!deletingDataset) return; if (deletingDataset.is_active) { toast.error("Cannot delete active dataset."); setDeletingDataset(null); return; } try { await supabase.from("students").delete().eq("dataset", deletingDataset.slug); await supabase.from("student_datasets").delete().eq("id", deletingDataset.id); toast.success(`Deleted "${deletingDataset.name}"`); fetchDatasets(); } catch { toast.error("Failed to delete"); } setDeletingDataset(null); };
   const saveSettings = async () => { setSavingSettings(true); try { for (const [key, value] of Object.entries(settings)) { await supabase.from("system_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any, { onConflict: "key" }); } toast.success("Settings saved!"); await queryClient.invalidateQueries({ queryKey: ["system-settings"] }); } catch { toast.error("Failed to save"); } setSavingSettings(false); };
-  const handlePushSync = async () => { setSyncingPush(true); try { const today = format(new Date(), "yyyy-MM-dd"); const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body: { date: today } }); if (error) throw error; if (data?.success) { toast.success(`✅ Pushed to Google Sheet — ${data.attendance_records ?? 0} records synced`, { duration: 6000 }); } else { const errMsg = data?.errors?.[0] || data?.error || "Check that your Apps Script URL is current"; toast.error(`Push failed: ${errMsg}`, { duration: 10000 }); } } catch (err: any) { toast.error("Push failed: " + (err.message || "Unknown error")); } setSyncingPush(false); };
-  const testScriptUrl = async () => { const url = settings.google_apps_script_url; if (!url) { toast.error("No Apps Script URL configured"); return; } setTestingScriptUrl(true); try { const today = format(new Date(), "yyyy-MM-dd"); const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body: { date: today } }); if (error) throw error; if (data?.success) { toast.success("✅ Apps Script URL is working! Data synced to sheet.", { duration: 6000 }); } else { const errDetail = data?.errors?.join(" | ") || data?.error || "No response from Apps Script"; toast.error(`Apps Script test failed: ${errDetail}`, { duration: 12000 }); } } catch (err: any) { toast.error("Apps Script URL failed: " + (err.message || "Could not reach edge function")); } setTestingScriptUrl(false); };
+
+  // Sync targets
+  const handlePushSync = async () => {
+    setSyncingPush(true);
+    try {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body: { date: today } });
+      if (error) throw error;
+      if (data?.success) {
+        const results = data.results ?? [];
+        const successCount = results.filter((r: any) => r.success).length;
+        toast.success(`✅ Pushed to ${successCount}/${results.length} target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
+        if (results.some((r: any) => !r.success)) {
+          const failures = results.filter((r: any) => !r.success).map((r: any) => `${r.label}: ${r.error}`);
+          toast.error(`Some targets failed: ${failures.join(", ")}`, { duration: 10000 });
+        }
+        fetchSettings();
+      } else {
+        toast.error(`Push failed: ${data?.error || "Unknown"}`, { duration: 10000 });
+      }
+    } catch (err: any) { toast.error("Push failed: " + (err.message || "Unknown error")); }
+    setSyncingPush(false);
+  };
+
+  const saveSyncTarget = async () => {
+    if (!newTargetLabel.trim() || !newTargetUrl.trim()) { toast.error("Fill label and URL"); return; }
+    setSavingTarget(true);
+    try {
+      if (editSyncTarget) {
+        await supabase.from("sync_targets").update({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any).eq("id", editSyncTarget.id);
+        toast.success("Target updated");
+      } else {
+        await supabase.from("sync_targets").insert({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any);
+        toast.success("Target added");
+      }
+      setAddSyncTargetOpen(false); setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl("");
+      fetchSyncTargets();
+    } catch (err: any) { toast.error("Failed: " + err.message); }
+    setSavingTarget(false);
+  };
+
   const lastSyncAt = settings.last_sync_at;
 
   if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
@@ -139,6 +189,18 @@ const AdminPanel = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Add/Edit Sync Target Dialog */}
+      <Dialog open={addSyncTargetOpen} onOpenChange={(open) => { setAddSyncTargetOpen(open); if (!open) { setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl(""); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{editSyncTarget ? "Edit Sync Target" : "Add Sync Target"}</DialogTitle><DialogDescription>Enter the Apps Script Web App URL for pushing attendance data.</DialogDescription></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2"><Label>Label <span className="text-destructive">*</span></Label><Input placeholder="e.g. Main Attendance Sheet" value={newTargetLabel} onChange={(e) => setNewTargetLabel(e.target.value)} /></div>
+            <div className="space-y-2"><Label>Apps Script URL <span className="text-destructive">*</span></Label><Input placeholder="https://script.google.com/macros/s/.../exec" value={newTargetUrl} onChange={(e) => setNewTargetUrl(e.target.value)} className="text-xs" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => { setAddSyncTargetOpen(false); setEditSyncTarget(null); }}>Cancel</Button><Button onClick={saveSyncTarget} disabled={savingTarget}>{savingTarget ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Saving...</> : (editSyncTarget ? "Save Changes" : "Add Target")}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {tab === "datasets" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between"><div><h3 className="text-lg font-bold text-foreground">Student Datasets</h3><p className="text-sm text-muted-foreground mt-0.5">Switch active dataset to change which students the website shows.</p></div><Button onClick={() => setAddDatasetOpen(true)} className="gap-1.5 shrink-0"><Plus className="h-4 w-4" /> Add New Dataset</Button></div>
@@ -167,10 +229,45 @@ const AdminPanel = () => {
               );
             })}
           </div>
-          <div className="rounded-lg border border-border p-5">
-            <div className="flex items-center gap-2 mb-3"><ArrowUpToLine className="h-4 w-4 text-primary" /><h4 className="font-semibold text-foreground text-sm">Push Today's Attendance → Google Sheet</h4></div>
-            {lastSyncAt && <p className="text-xs text-muted-foreground mb-3">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
-            <Button onClick={handlePushSync} disabled={syncingPush} variant="outline" className="gap-1.5">{syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}Push Today's Attendance to Sheet</Button>
+
+          {/* Sync Targets Section */}
+          <div className="rounded-lg border border-border p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2"><ArrowUpToLine className="h-4 w-4 text-primary" /><h4 className="font-semibold text-foreground text-sm">Apps Script Sync Targets</h4></div>
+              <Button size="sm" onClick={() => setAddSyncTargetOpen(true)} className="gap-1 h-8 text-xs"><Plus className="h-3.5 w-3.5" /> Add Target</Button>
+            </div>
+            {syncTargets.length === 0 && <p className="text-xs text-muted-foreground">No sync targets. Add an Apps Script URL to enable push sync.</p>}
+            {syncTargets.map((t) => (
+              <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold">{t.label}</p>
+                  <p className="text-xs text-muted-foreground truncate">{t.apps_script_url.slice(0, 70)}...</p>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <Switch checked={t.is_active} onCheckedChange={async (v) => { await supabase.from("sync_targets").update({ is_active: v } as any).eq("id", t.id); fetchSyncTargets(); }} />
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1" disabled={testingTarget === t.id}
+                    onClick={async () => {
+                      setTestingTarget(t.id);
+                      try {
+                        const { data } = await supabase.functions.invoke("sync-to-sheet", { body: { date: format(new Date(), "yyyy-MM-dd") } });
+                        const result = data?.results?.find((r: any) => r.label === t.label);
+                        if (result?.success) toast.success(`✅ ${t.label} is working`);
+                        else toast.error(`❌ ${t.label}: ${result?.error ?? "Failed"}`);
+                      } catch { toast.error("Test failed"); }
+                      setTestingTarget(null);
+                    }}>
+                    {testingTarget === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Test
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditSyncTarget(t); setNewTargetLabel(t.label); setNewTargetUrl(t.apps_script_url); setAddSyncTargetOpen(true); }}><Pencil className="h-3 w-3" /></Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs text-destructive border-destructive/30" onClick={async () => { await supabase.from("sync_targets").delete().eq("id", t.id); fetchSyncTargets(); toast.success("Removed"); }}><Trash2 className="h-3 w-3" /></Button>
+                </div>
+              </div>
+            ))}
+            {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
+            <Button onClick={handlePushSync} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+              {syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
+              Push Today's Attendance to All Active Targets
+            </Button>
           </div>
         </div>
       )}
@@ -203,10 +300,6 @@ const AdminPanel = () => {
 
       {tab === "settings" && (
         <div className="space-y-6">
-          <div className="rounded-lg border border-border p-6">
-            <div className="flex items-center gap-2 mb-4"><ArrowUpToLine className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Attendance Sync (Website → Google Sheet)</h3></div>
-            <div className="space-y-2"><Label>Apps Script Web App URL</Label><div className="flex gap-2"><Input value={settings.google_apps_script_url ?? ""} onChange={(e) => setSettings(prev => ({ ...prev, google_apps_script_url: e.target.value }))} placeholder="https://script.google.com/macros/s/.../exec" className="text-sm flex-1" /><Button variant="outline" size="sm" onClick={testScriptUrl} disabled={testingScriptUrl}>{testingScriptUrl ? <Loader2 className="h-4 w-4 animate-spin" /> : "Test"}</Button></div></div>
-          </div>
           <div className="rounded-lg border border-border p-6">
             <div className="flex items-center gap-2 mb-4"><Clock className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Auto-Sync Interval</h3></div>
             <div className="space-y-2"><Label>Minutes between auto-syncs (0 = disabled)</Label><Input type="number" min="0" value={settings.sync_interval_minutes ?? "0"} onChange={(e) => setSettings(prev => ({ ...prev, sync_interval_minutes: e.target.value }))} className="text-sm w-32" /></div>
