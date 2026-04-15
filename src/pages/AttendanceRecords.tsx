@@ -209,7 +209,10 @@ const AttendanceRecords = () => {
     <div className="container mx-auto px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h2><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
-        <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
+        <div className="flex gap-2">
+          {isOwner && <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>}
+          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
+        </div>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v))}><SelectTrigger className="w-36"><SelectValue /></SelectTrigger><SelectContent>{months.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}</SelectContent></Select>
