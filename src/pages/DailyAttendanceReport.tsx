@@ -4,7 +4,7 @@ import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { useActiveDataset } from "@/hooks/useActiveDataset";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ChevronLeft, ChevronRight, Printer } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Printer, X } from "lucide-react";
 import { getCombinedStatus } from "@/lib/attendanceSession";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
@@ -14,14 +14,13 @@ const DailyAttendanceReport = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const { data: settings } = useSystemSettings();
   const { activeSlug } = useActiveDataset();
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
-
     setLoading(true);
-
     try {
       const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status, center", { onlyEnrolled: true });
       const attendanceRows = await fetchAttendanceForStudents<any>({
@@ -29,7 +28,6 @@ const DailyAttendanceReport = () => {
         studentIds: studentRows.map((student) => student.id),
         exactDate: selectedDate,
       });
-
       setStudents(studentRows);
       setAttendance(attendanceRows);
     } finally {
@@ -53,6 +51,8 @@ const DailyAttendanceReport = () => {
     return first?.center || "Adilabad";
   }, [students, settings?.center_name]);
 
+  const allClassrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
+
   const reportData = useMemo(() => {
     const studentSessions: Record<string, { AM?: string; PM?: string }> = {};
     attendance.forEach((a: any) => {
@@ -65,6 +65,9 @@ const DailyAttendanceReport = () => {
     const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
+      // If batches are selected, skip non-matching
+      if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
+
       if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0 };
       classMap[name].strength++;
 
@@ -88,11 +91,15 @@ const DailyAttendanceReport = () => {
     })).sort((a, b) => a.batch.localeCompare(b.batch));
     const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half }), { strength: 0, present: 0, absent: 0, half: 0 });
     return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 } };
-  }, [students, attendance]);
+  }, [students, attendance, selectedBatches]);
 
   const dateObj = new Date(selectedDate + "T00:00:00");
   const dateLabel = format(dateObj, "dd/MMM/yyyy");
   const changeDate = (dir: number) => { const d = new Date(selectedDate + "T00:00:00"); d.setDate(d.getDate() + dir); setSelectedDate(format(d, "yyyy-MM-dd")); };
+
+  const toggleBatch = (batch: string) => {
+    setSelectedBatches(prev => prev.includes(batch) ? prev.filter(b => b !== batch) : [...prev, batch]);
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -105,6 +112,33 @@ const DailyAttendanceReport = () => {
           <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5 print:hidden"><Printer className="h-4 w-4" /> Print</Button>
         </div>
       </div>
+
+      {/* Batch filter chips */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 print:hidden">
+        <span className="text-xs font-semibold text-muted-foreground">Filter by Batch:</span>
+        {allClassrooms.map(c => (
+          <button
+            key={c}
+            onClick={() => toggleBatch(c)}
+            className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+              selectedBatches.includes(c)
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+        {selectedBatches.length > 0 && (
+          <button
+            onClick={() => setSelectedBatches([])}
+            className="rounded-full px-3 py-1 text-xs font-medium border border-destructive/30 text-destructive hover:bg-destructive/10 flex items-center gap-1"
+          >
+            <X className="h-3 w-3" /> Clear Filter
+          </button>
+        )}
+      </div>
+
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
         <div className="mx-auto max-w-3xl bg-card shadow-lg print:shadow-none">
           <div className="border-2 border-foreground bg-primary/5 px-6 py-4 text-center">
@@ -112,7 +146,7 @@ const DailyAttendanceReport = () => {
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
-          <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
+          <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent (A)", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
             <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={6} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
               <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
                 <td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td>

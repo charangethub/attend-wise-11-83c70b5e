@@ -92,17 +92,17 @@ const AttendanceRecords = () => {
 
   const getStudentSummary = (studentId: string) => {
     const days = attMap[studentId] || {};
-    let p = 0, ab = 0, l = 0, h = 0, half = 0;
+    let p = 0, a = 0, l = 0, h = 0, half = 0;
     Object.values(days).forEach((d) => {
       const combined = getCombinedStatus(d.AM, d.PM);
       if (combined === "P") p++;
-      else if (combined === "AB") ab++;
+      else if (combined === "A") a++;
       else if (combined === "L") l++;
       else if (combined === "H") h++;
       else half++;
     });
-    const total = p + ab + l + h + half;
-    return { p, ab, l, h, half, total, pct: total > 0 ? Math.round((p / total) * 100) : 0 };
+    const total = p + a + l + h + half;
+    return { p, a, l, h, half, total, pct: total > 0 ? Math.round((p / total) * 100) : 0 };
   };
 
   const statusBadgeColor = (status: string) => {
@@ -111,18 +111,18 @@ const AttendanceRecords = () => {
 
   const exportCSV = () => {
     const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1).padStart(2, "0"));
-    const headers = ["Roll No", "User ID", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "AB", "L", "H", "Half", "Total", "%"];
+    const headers = ["Roll No", "User ID", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment", ...dayHeaders, "P", "A", "L", "H", "Half", "Total", "%"];
     const rows = filteredStudents.map((s: any) => {
       const days = attMap[s.id] || {};
       const sum = getStudentSummary(s.id);
       return [s.roll_no, s.user_id_vedantu || "", s.student_name, s.curriculum, s.grade, s.classroom_name, s.enrollment_status,
         ...dayHeaders.map((_, i) => { const d = days[i + 1]; return d ? getCombinedStatus(d.AM, d.PM) : ""; }),
-        sum.p, sum.ab, sum.l, sum.h, sum.half, sum.total, sum.pct];
+        sum.p, sum.a, sum.l, sum.h, sum.half, sum.total, sum.pct];
     });
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `attendance-${months[month]}-${year}.csv`; a.click(); URL.revokeObjectURL(url);
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `attendance-${months[month]}-${year}.csv`; anchor.click(); URL.revokeObjectURL(url);
   };
 
   return (
@@ -142,10 +142,10 @@ const AttendanceRecords = () => {
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
         <span className="font-medium text-muted-foreground">Legend:</span>
         <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Full Day Present</span>
-        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">AB = Full Day Absent</span>
+        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">A = Full Day Absent</span>
         <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave</span>
+        <span className="rounded px-2 py-0.5 bg-purple-200 text-purple-700 font-bold">H = Half Day</span>
         <span className="rounded px-2 py-0.5 bg-orange-200 text-orange-700 font-bold">P:A = Present AM, Absent PM</span>
-        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">P:L = Present AM, Leave PM</span>
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (

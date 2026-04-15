@@ -55,7 +55,7 @@ const AbsenteeDashboard = () => {
         columns: "id, student_id, status, remark, session",
         studentIds,
         exactDate: selectedDate,
-        statuses: ["AB", "L"],
+        statuses: ["A", "L"],
       });
 
       const clMap: Record<string, any> = {};
@@ -182,7 +182,7 @@ const AbsenteeDashboard = () => {
         };
       })
       .filter((s) => {
-        if (statusFilter === "absent") return s.status === "AB";
+        if (statusFilter === "absent") return s.status === "A";
         if (statusFilter === "absent_no_remark") return !s.callLog;
         return true;
       })
@@ -195,7 +195,7 @@ const AbsenteeDashboard = () => {
   const makeWhatsAppUrl = (contactNum: string, studentName: string, rollNo: string, status: string) => {
     const cleanNum = contactNum.replace(/\D/g, "");
     if (!cleanNum) return null;
-    const msg = encodeURIComponent(`Dear Parent, your child ${studentName} (Roll: ${rollNo}) was marked ${status} on ${selectedDate}. - Vedantu Learning Centre`);
+    const msg = encodeURIComponent(`Dear Parent, your child ${studentName} (Roll: ${rollNo}) was marked ${status === "A" ? "Absent" : status} on ${selectedDate}. - Vedantu Learning Centre`);
     return `https://wa.me/91${cleanNum}?text=${msg}`;
   };
 
@@ -206,7 +206,7 @@ const AbsenteeDashboard = () => {
     const rows = absentees.map((s) => {
       const base = [s.roll_no, s.student_name, s.grade, s.classroom_name];
       if (isAdminOrOwner) base.push(s.emergency_contact_1 || "", s.emergency_contact_2 || "");
-      base.push(s.status);
+      base.push(s.status === "A" ? "Absent" : s.status);
       base.push(s.callLog?.call_status || "—", s.callLog?.absence_reason || "—", s.callLog?.comment || "");
       return base;
     });
@@ -289,8 +289,8 @@ const AbsenteeDashboard = () => {
                   <td className="px-4 py-2.5 font-medium">{s.student_name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{s.classroom_name}</td>
                   <td className="px-4 py-2.5 text-center">
-                    <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${s.status === "AB" ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground"}`}>
-                      {s.status === "AB" ? "Absent" : "Leave"}
+                    <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold ${s.status === "A" ? "bg-destructive text-destructive-foreground" : "bg-warning text-warning-foreground"}`}>
+                      {s.status === "A" ? "Absent" : "Leave"}
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-center">
