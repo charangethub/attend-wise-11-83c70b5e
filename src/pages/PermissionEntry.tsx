@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from "sonner";
 import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Plus, Search, Trash2, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
 import { logActivity } from "@/hooks/useActivityLog";
 
@@ -28,7 +28,7 @@ type Permission = {
 const PermissionEntry = () => {
   const { user, userRole } = useAuth();
   const navigate = useNavigate();
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Permission Entry");
   const isAdminOrOwner = userRole === "owner" || userRole === "admin";
 
   const [tab, setTab] = useState<"daily" | "monthly">("daily");

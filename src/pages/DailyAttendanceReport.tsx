@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
-import { useActiveDataset } from "@/hooks/useActiveDataset";
+import { usePageDataset } from "@/hooks/usePageDataset";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, ChevronLeft, ChevronRight, Printer, X } from "lucide-react";
@@ -16,7 +16,7 @@ const DailyAttendanceReport = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
   const { data: settings } = useSystemSettings();
-  const { activeSlug } = useActiveDataset();
+  const { datasetSlug: activeSlug } = usePageDataset("Daily Report");
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
