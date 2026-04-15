@@ -284,6 +284,27 @@ const AttendanceRecords = () => {
           </div>
         </TooltipProvider>
       )}
+
+      {/* CSV Upload Dialog */}
+      <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload Attendance CSV</DialogTitle>
+            <DialogDescription>Upload a CSV to bulk import attendance records.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <Button variant="outline" onClick={downloadAttendanceTemplate} className="gap-1.5 w-full">
+              <Download className="h-4 w-4" /> Download CSV Template
+            </Button>
+            <div className="text-xs text-muted-foreground space-y-1">
+              <p><strong>Columns:</strong> roll_no, date (YYYY-MM-DD), status (P/A/L/H), remark (optional)</p>
+              <p>Students are matched by roll_no. Invalid rows are skipped.</p>
+            </div>
+            <Input type="file" accept=".csv" onChange={handleAttendanceCsvUpload} disabled={csvUploading} />
+            {csvUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
