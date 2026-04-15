@@ -30,10 +30,87 @@ const AttendanceRecords = () => {
   const { datasetSlug: activeSlug } = usePageDataset("Attendance Records");
   const { userRole } = useAuth();
   const isOwner = userRole === "owner";
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
 
   const daysInMonth = getDaysInMonth(new Date(year, month));
   const monthStart = `${year}-${String(month + 1).padStart(2, "0")}-01`;
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+  const downloadAttendanceTemplate = () => {
+    const header = ["roll_no", "date", "status", "remark"].join(",");
+    const sample1 = ["ROLL001", "2026-04-15", "P", ""].join(",");
+    const sample2 = ["ROLL002", "2026-04-15", "A", "Sick"].join(",");
+    const csv = `${header}\n${sample1}\n${sample2}\n`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "attendance_upload_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleAttendanceCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvUploading(true);
+    try {
+      const text = await file.text();
+      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      const rollIdx = headers.indexOf("roll_no");
+      const dateIdx = headers.indexOf("date");
+      const statusIdx = headers.indexOf("status");
+      const remarkIdx = headers.indexOf("remark");
+
+      if (rollIdx === -1 || dateIdx === -1 || statusIdx === -1) {
+        toast.error("CSV must have roll_no, date, and status columns");
+        setCsvUploading(false); return;
+      }
+
+      const rollMap = new Map(students.map((s: any) => [s.roll_no.toUpperCase(), s.id]));
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const upserts: any[] = [];
+      let skipped = 0;
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map(c => c.trim());
+        const rollNo = cols[rollIdx]?.toUpperCase();
+        const studentId = rollMap.get(rollNo);
+        if (!studentId) { skipped++; continue; }
+        const date = cols[dateIdx];
+        const status = cols[statusIdx]?.toUpperCase();
+        const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
+        if (!["P", "A", "L", "H"].includes(status)) { skipped++; continue; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped++; continue; }
+
+        upserts.push({
+          student_id: studentId,
+          date,
+          session: "AM",
+          status,
+          remark,
+          marked_by: authUser?.id,
+        });
+      }
+
+      if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+
+      for (let i = 0; i < upserts.length; i += 50) {
+        const { error } = await supabase.from("attendance").upsert(
+          upserts.slice(i, i + 50) as any,
+          { onConflict: "student_id,date,session" }
+        );
+        if (error) throw error;
+      }
+
+      toast.success(`Uploaded ${upserts.length} attendance records (${skipped} skipped)`);
+      setCsvUploadOpen(false);
+      fetchData();
+    } catch (err: any) { toast.error("Upload failed: " + err.message); }
+    setCsvUploading(false);
+  };
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
