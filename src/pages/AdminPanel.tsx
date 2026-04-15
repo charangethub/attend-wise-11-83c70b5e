@@ -64,6 +64,7 @@ const AdminPanel = () => {
   const [newTargetUrl, setNewTargetUrl] = useState("");
   const [savingTarget, setSavingTarget] = useState(false);
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
+  const [restoringAttendance, setRestoringAttendance] = useState(false);
 
   const fetchUsers = async () => {
     const [{ data: profiles }, { data: roles }, { data: statuses }, { data: access }] = await Promise.all([
@@ -437,6 +438,24 @@ const AdminPanel = () => {
             </div>
           </div>
           <div className="flex justify-end"><Button onClick={saveSettings} disabled={savingSettings} className="gap-1.5"><Save className="h-4 w-4" /> {savingSettings ? "Saving..." : "Save All Settings"}</Button></div>
+          {userRole === "owner" && (
+            <div className="rounded-lg border border-border p-6">
+              <div className="flex items-center gap-2 mb-2"><RefreshCw className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Restore Attendance from Logs</h3></div>
+              <p className="text-sm text-muted-foreground mb-4">If attendance records were lost (e.g. after a dataset URL change), this will reconstruct them from activity logs by matching student names. Only missing records are inserted — existing ones are not overwritten.</p>
+              <Button variant="destructive" disabled={restoringAttendance} onClick={async () => {
+                setRestoringAttendance(true);
+                try {
+                  const { data, error } = await supabase.rpc("restore_attendance_from_logs" as any);
+                  if (error) throw error;
+                  toast.success(`✅ Restored ${data} attendance records from activity logs`, { duration: 8000 });
+                } catch (err: any) { toast.error("Restore failed: " + (err.message || "Unknown")); }
+                setRestoringAttendance(false);
+              }} className="gap-1.5">
+                {restoringAttendance ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {restoringAttendance ? "Restoring..." : "Restore Attendance Now"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
       {tab === "logs" && <ActivityLogViewer />}
