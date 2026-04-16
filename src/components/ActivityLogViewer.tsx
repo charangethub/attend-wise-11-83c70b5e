@@ -4,7 +4,8 @@ import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, RefreshCw, Activity } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Search, RefreshCw, Activity, Maximize2 } from "lucide-react";
 
 const ActivityLogViewer = () => {
   const [logs, setLogs] = useState<any[]>([]);
@@ -13,6 +14,7 @@ const ActivityLogViewer = () => {
   const [userFilter, setUserFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [detailLog, setDetailLog] = useState<any>(null);
 
   const fetchLogs = async () => {
     setLoading(true);
@@ -60,6 +62,11 @@ const ActivityLogViewer = () => {
     return "bg-primary/10 text-primary";
   };
 
+  const formatDetails = (details: any) => {
+    if (!details || typeof details !== "object" || Object.keys(details).length === 0) return "—";
+    return Object.entries(details).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join(", ");
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -98,15 +105,16 @@ const ActivityLogViewer = () => {
       ) : filteredLogs.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">No activity logs for this date</p>
       ) : (
-        <div className="rounded-lg border border-border overflow-auto max-h-[500px]">
-          <table className="w-full text-sm">
+        <div className="rounded-lg border border-border overflow-x-auto overflow-y-auto max-h-[600px]">
+          <table className="w-full text-sm min-w-[900px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-muted/80 backdrop-blur">
-                <th className="px-3 py-2 text-left font-semibold text-foreground">Time</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground">User</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground">Action</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground">Student</th>
-                <th className="px-3 py-2 text-left font-semibold text-foreground">Details</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">Time</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">User</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">Action</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap">Student</th>
+                <th className="px-3 py-2 text-left font-semibold text-foreground whitespace-nowrap min-w-[300px]">Details</th>
+                <th className="px-3 py-2 text-center font-semibold text-foreground whitespace-nowrap">View</th>
               </tr>
             </thead>
             <tbody>
@@ -115,20 +123,25 @@ const ActivityLogViewer = () => {
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">
                     {format(new Date(log.created_at), "hh:mm:ss a")}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 whitespace-nowrap">
                     <span className="font-medium text-foreground">{log.user_name}</span>
                     <br /><span className="text-[10px] text-muted-foreground">{log.user_email}</span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 whitespace-nowrap">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${getActionColor(log.action)}`}>
                       {log.action}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-xs">{log.student_name || "—"}</td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground max-w-[200px] truncate">
-                    {log.details && typeof log.details === "object" && Object.keys(log.details).length > 0
-                      ? Object.entries(log.details).map(([k, v]) => `${k}: ${v}`).join(", ")
-                      : "—"}
+                  <td className="px-3 py-2 text-xs whitespace-nowrap">{log.student_name || "—"}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    <div className="max-w-[400px] overflow-x-auto whitespace-nowrap scrollbar-thin">
+                      {formatDetails(log.details)}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <button onClick={() => setDetailLog(log)} className="rounded p-1 hover:bg-muted transition-colors" title="View full details">
+                      <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -137,6 +150,33 @@ const ActivityLogViewer = () => {
         </div>
       )}
       <p className="text-xs text-muted-foreground">Showing {filteredLogs.length} log entries</p>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!detailLog} onOpenChange={() => setDetailLog(null)}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-auto">
+          <DialogHeader><DialogTitle>Activity Log Details</DialogTitle></DialogHeader>
+          {detailLog && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div><span className="text-muted-foreground">Time:</span><br/><span className="font-medium">{format(new Date(detailLog.created_at), "dd MMM yyyy, hh:mm:ss a")}</span></div>
+                <div><span className="text-muted-foreground">User:</span><br/><span className="font-medium">{detailLog.user_name}</span></div>
+                <div><span className="text-muted-foreground">Email:</span><br/><span className="font-medium">{detailLog.user_email}</span></div>
+                <div><span className="text-muted-foreground">Action:</span><br/><span className="font-medium">{detailLog.action}</span></div>
+                <div><span className="text-muted-foreground">Student:</span><br/><span className="font-medium">{detailLog.student_name || "—"}</span></div>
+                <div><span className="text-muted-foreground">Entity:</span><br/><span className="font-medium">{detailLog.entity_type}</span></div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Full Details:</span>
+                <pre className="mt-1 whitespace-pre-wrap break-all text-xs bg-muted p-3 rounded-lg max-h-60 overflow-auto font-mono">
+                  {detailLog.details && typeof detailLog.details === "object"
+                    ? JSON.stringify(detailLog.details, null, 2)
+                    : "—"}
+                </pre>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

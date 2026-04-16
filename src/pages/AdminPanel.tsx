@@ -443,6 +443,7 @@ const AdminPanel = () => {
           </div>
           <div className="flex justify-end"><Button onClick={saveSettings} disabled={savingSettings} className="gap-1.5"><Save className="h-4 w-4" /> {savingSettings ? "Saving..." : "Save All Settings"}</Button></div>
           {userRole === "owner" && (
+            <>
             <div className="rounded-lg border border-border p-6">
               <div className="flex items-center gap-2 mb-2"><RefreshCw className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Restore Attendance from Logs</h3></div>
               <p className="text-sm text-muted-foreground mb-4">Reconstruct missing attendance records from activity logs by matching student names. Only missing records are inserted — existing ones are not overwritten.</p>
@@ -507,6 +508,29 @@ const AdminPanel = () => {
                 </Button>
               </div>
             </div>
+            <div className="rounded-lg border border-border p-6">
+              <div className="flex items-center gap-2 mb-2"><RefreshCw className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Restore Inventory from Logs</h3></div>
+              <p className="text-sm text-muted-foreground mb-4">Reconstruct inventory data from inventory activity logs.</p>
+              <Button variant="destructive" disabled={restoringAttendance} onClick={async () => {
+                setRestoringAttendance(true);
+                try {
+                  const { data: logs } = await supabase.from("inventory_activity_logs").select("*").order("created_at", { ascending: true });
+                  if (!logs || logs.length === 0) { toast.info("No inventory logs found to restore"); setRestoringAttendance(false); return; }
+                  let restored = 0;
+                  for (const log of logs) {
+                    if (log.item_id && log.quantity_change) {
+                      await supabase.from("inventory_items").update({ current_stock: log.quantity_change, updated_at: new Date().toISOString() } as any).eq("id", log.item_id);
+                      restored++;
+                    }
+                  }
+                  toast.success(`✅ Processed ${restored} inventory log entries`, { duration: 8000 });
+                } catch (err: any) { toast.error("Restore failed: " + (err.message || "Unknown")); }
+                setRestoringAttendance(false);
+              }} className="gap-1.5">
+                <RefreshCw className="h-4 w-4" /> Restore Inventory
+              </Button>
+            </div>
+            </>
           )}
         </div>
       )}
