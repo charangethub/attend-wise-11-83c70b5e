@@ -443,6 +443,7 @@ const AdminPanel = () => {
           </div>
           <div className="flex justify-end"><Button onClick={saveSettings} disabled={savingSettings} className="gap-1.5"><Save className="h-4 w-4" /> {savingSettings ? "Saving..." : "Save All Settings"}</Button></div>
           {userRole === "owner" && (
+            <>
             <div className="rounded-lg border border-border p-6">
               <div className="flex items-center gap-2 mb-2"><RefreshCw className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Restore Attendance from Logs</h3></div>
               <p className="text-sm text-muted-foreground mb-4">Reconstruct missing attendance records from activity logs by matching student names. Only missing records are inserted — existing ones are not overwritten.</p>
@@ -509,7 +510,7 @@ const AdminPanel = () => {
             </div>
             <div className="rounded-lg border border-border p-6">
               <div className="flex items-center gap-2 mb-2"><RefreshCw className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Restore Inventory from Logs</h3></div>
-              <p className="text-sm text-muted-foreground mb-4">Reconstruct inventory data from inventory activity logs. This will update stock counts based on logged activity.</p>
+              <p className="text-sm text-muted-foreground mb-4">Reconstruct inventory data from inventory activity logs.</p>
               <Button variant="destructive" disabled={restoringAttendance} onClick={async () => {
                 setRestoringAttendance(true);
                 try {
@@ -529,6 +530,7 @@ const AdminPanel = () => {
                 <RefreshCw className="h-4 w-4" /> Restore Inventory
               </Button>
             </div>
+            </>
           )}
         </div>
       )}
