@@ -47,7 +47,7 @@ const AbsenteeDashboard = () => {
     try {
       const studentRows = await fetchDatasetStudents<any>(
         activeSlug,
-        "id, roll_no, student_name, grade, classroom_name, emergency_contact_1, emergency_contact_2, enrollment_status",
+        "id, roll_no, user_id_vedantu, student_name, grade, classroom_name, mobile_number, emergency_contact_1, emergency_contact_2, enrollment_status",
         { onlyEnrolled: true },
       );
       const studentIds = studentRows.map((s: any) => s.id);
@@ -336,6 +336,9 @@ const AbsenteeDashboard = () => {
           rollNo={callLogStudent.roll_no}
           classroom={callLogStudent.classroom_name}
           absentDate={selectedDate}
+          mobileNumber={callLogStudent.mobile_number}
+          emergencyContact1={callLogStudent.emergency_contact_1}
+          emergencyContact2={callLogStudent.emergency_contact_2}
           existingLog={callLogStudent.callLog}
           onSaved={() => { setCallLogStudent(null); void fetchData(); }}
         />
