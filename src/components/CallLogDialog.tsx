@@ -41,6 +41,9 @@ interface CallLogDialogProps {
   rollNo: string;
   classroom?: string;
   absentDate: string;
+  mobileNumber?: string | null;
+  emergencyContact1?: string | null;
+  emergencyContact2?: string | null;
   onSaved?: () => void;
   existingLog?: {
     call_status: string;
@@ -58,6 +61,9 @@ const CallLogDialog = ({
   rollNo,
   classroom,
   absentDate,
+  mobileNumber,
+  emergencyContact1,
+  emergencyContact2,
   onSaved,
   existingLog,
 }: CallLogDialogProps) => {
@@ -112,7 +118,7 @@ const CallLogDialog = ({
         .update({ remark: remarkText })
         .eq("student_id", studentId)
         .eq("date", absentDate)
-        .in("status", ["AB", "L"]);
+        .in("status", ["A", "AB", "L"]);
 
       toast.success("Call log saved!");
 
@@ -148,7 +154,7 @@ const CallLogDialog = ({
 
         <div className="space-y-4">
           {/* Student Info Header */}
-          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-0.5">
+          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1">
             <p className="text-sm font-bold text-foreground">{studentName}</p>
             <p className="text-xs text-muted-foreground">
               {[rollNo, classroom].filter(Boolean).join(" · ")}
@@ -156,6 +162,26 @@ const CallLogDialog = ({
             <p className="text-xs text-muted-foreground">
               Absent on: {format(new Date(absentDate + "T00:00:00"), "dd MMM yyyy")}
             </p>
+            {(mobileNumber || emergencyContact1 || emergencyContact2) && (
+              <div className="mt-2 pt-2 border-t border-border space-y-0.5">
+                <p className="text-[11px] font-semibold text-foreground uppercase tracking-wide">Contact Numbers</p>
+                {mobileNumber && (
+                  <a href={`tel:${mobileNumber}`} className="block text-xs text-primary hover:underline">
+                    📱 Mobile: {mobileNumber}
+                  </a>
+                )}
+                {emergencyContact1 && (
+                  <a href={`tel:${emergencyContact1}`} className="block text-xs text-primary hover:underline">
+                    ☎️ Emergency 1: {emergencyContact1}
+                  </a>
+                )}
+                {emergencyContact2 && (
+                  <a href={`tel:${emergencyContact2}`} className="block text-xs text-primary hover:underline">
+                    ☎️ Emergency 2: {emergencyContact2}
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Call Status */}

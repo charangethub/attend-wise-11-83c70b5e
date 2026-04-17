@@ -136,21 +136,13 @@ const PermissionEntry = () => {
       } as any);
       if (error) throw error;
 
-      // 2. Auto-create attendance records based on permission type
+      // 2. Auto-create attendance record (single session per day)
       const remarkText = reason.trim() || permissionType;
-      if (permissionType === "Half Day Permission") {
-        // AM = P, PM = A
-        await supabase.from("attendance").upsert([
-          { student_id: selectedStudent.id, date: selectedDate, session: "AM", status: "P", marked_by: user.id, remark: remarkText },
-          { student_id: selectedStudent.id, date: selectedDate, session: "PM", status: "A", marked_by: user.id, remark: remarkText },
-        ] as any[], { onConflict: "student_id,date,session" });
-      } else {
-        // Full Day = L for both sessions
-        await supabase.from("attendance").upsert([
-          { student_id: selectedStudent.id, date: selectedDate, session: "AM", status: "L", marked_by: user.id, remark: remarkText },
-          { student_id: selectedStudent.id, date: selectedDate, session: "PM", status: "L", marked_by: user.id, remark: remarkText },
-        ] as any[], { onConflict: "student_id,date,session" });
-      }
+      // Half Day Permission => student attended (P) with remark; Full Day Permission => Leave (L)
+      const status = permissionType === "Full Day Permission" ? "L" : "P";
+      await supabase.from("attendance").upsert([
+        { student_id: selectedStudent.id, date: selectedDate, session: "AM", status, marked_by: user.id, remark: remarkText },
+      ] as any[], { onConflict: "student_id,date,session" });
 
       // 3. Log activity
       await logActivity({
@@ -186,9 +178,10 @@ const PermissionEntry = () => {
   };
 
   const handleDelete = async (id: string) => {
+    // The DB trigger trg_clear_attendance_on_permission_delete will also wipe attendance for that date
     const { error } = await supabase.from("student_permissions" as any).delete().eq("id", id);
     if (error) toast.error("Failed to delete");
-    else { toast.success("Permission removed"); void fetchData(); }
+    else { toast.success("Permission removed and attendance cleared"); void fetchData(); }
   };
 
   const shiftDate = (d: number) => {

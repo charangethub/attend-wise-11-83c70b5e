@@ -340,9 +340,9 @@ const AttendanceDashboard = () => {
           <p className="text-2xl font-bold text-destructive">{abCount}</p>
           <p className="text-xs text-muted-foreground">Absent</p>
         </div>
-        <div className="rounded-lg border border-purple-400/30 bg-purple-100/10 p-3 text-center">
-          <p className="text-2xl font-bold text-purple-600">{hCount}</p>
-          <p className="text-xs text-muted-foreground">Half Day</p>
+        <div className="rounded-lg border border-blue-400/30 bg-blue-100/10 p-3 text-center">
+          <p className="text-2xl font-bold text-blue-600">{hCount}</p>
+          <p className="text-xs text-muted-foreground">Holiday</p>
         </div>
         <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
           <p className="text-2xl font-bold text-muted-foreground">{filteredStudents.length - markedCount}</p>
@@ -356,7 +356,7 @@ const AttendanceDashboard = () => {
           <div className="flex gap-3 text-xs">
             <span className="text-success font-bold">P:{pCount}</span>
             <span className="text-destructive font-bold">A:{abCount}</span>
-            <span className="text-purple-600 font-bold">H:{hCount}</span>
+            <span className="text-blue-600 font-bold">H:{hCount}</span>
           </div>
         </div>
         <Progress value={pct} className="h-2.5" />

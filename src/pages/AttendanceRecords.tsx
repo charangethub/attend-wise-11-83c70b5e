@@ -4,7 +4,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Download, BarChart3, Search, Upload } from "lucide-react";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,6 +12,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkTooltip } from "@/lib/attendanceData";
 import { toast } from "sonner";
+import CsvUploadDialog from "@/components/CsvUploadDialog";
+import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -38,9 +39,9 @@ const AttendanceRecords = () => {
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
   const downloadAttendanceTemplate = () => {
-    const header = ["roll_no", "date", "status", "remark"].join(",");
-    const sample1 = ["ROLL001", "2026-04-15", "P", ""].join(",");
-    const sample2 = ["ROLL002", "2026-04-15", "A", "Sick"].join(",");
+    const header = ["user_id_vedantu", "roll_no", "date", "status", "remark"].join(",");
+    const sample1 = ["VED-001", "ROLL001", "2026-04-15", "P", ""].join(",");
+    const sample2 = ["", "ROLL002", "2026-04-15", "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -49,9 +50,7 @@ const AttendanceRecords = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleAttendanceCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleAttendanceCsvUpload = async (file: File) => {
     setCsvUploading(true);
     try {
       const text = await file.text();
@@ -59,26 +58,29 @@ const AttendanceRecords = () => {
       if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
 
       const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
-      const rollIdx = headers.indexOf("roll_no");
       const dateIdx = headers.indexOf("date");
       const statusIdx = headers.indexOf("status");
       const remarkIdx = headers.indexOf("remark");
 
-      if (rollIdx === -1 || dateIdx === -1 || statusIdx === -1) {
-        toast.error("CSV must have roll_no, date, and status columns");
+      if (dateIdx === -1 || statusIdx === -1) {
+        toast.error("CSV must have date and status columns");
+        setCsvUploading(false); return;
+      }
+      if (headers.findIndex(h => h === "roll_no" || h === "rollno") === -1
+        && headers.findIndex(h => h === "user_id_vedantu" || h === "user_id" || h === "userid") === -1) {
+        toast.error("CSV must include either roll_no or user_id_vedantu");
         setCsvUploading(false); return;
       }
 
-      const rollMap = new Map(students.map((s: any) => [s.roll_no.toUpperCase(), s.id]));
+      const lookup = buildStudentLookup(students as any);
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const upserts: any[] = [];
       let skipped = 0;
 
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",").map(c => c.trim());
-        const rollNo = cols[rollIdx]?.toUpperCase();
-        const studentId = rollMap.get(rollNo);
-        if (!studentId) { skipped++; continue; }
+        const matched = findStudentInRow(cols, headers, lookup);
+        if (!matched) { skipped++; continue; }
         const date = cols[dateIdx];
         const status = cols[statusIdx]?.toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
@@ -86,7 +88,7 @@ const AttendanceRecords = () => {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped++; continue; }
 
         upserts.push({
-          student_id: studentId,
+          student_id: matched.id,
           date,
           session: "AM",
           status,
@@ -224,11 +226,10 @@ const AttendanceRecords = () => {
 
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
         <span className="font-medium text-muted-foreground">Legend:</span>
-        <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Full Day Present</span>
-        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">A = Full Day Absent</span>
-        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave</span>
-        <span className="rounded px-2 py-0.5 bg-purple-200 text-purple-700 font-bold">H = Half Day</span>
-        <span className="rounded px-2 py-0.5 bg-orange-200 text-orange-700 font-bold">P:A = Present AM, Absent PM</span>
+        <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Present</span>
+        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">A = Absent</span>
+        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave / Permission</span>
+        <span className="rounded px-2 py-0.5 bg-blue-200 text-blue-700 font-bold">H = Holiday</span>
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
@@ -286,25 +287,21 @@ const AttendanceRecords = () => {
       )}
 
       {/* CSV Upload Dialog */}
-      <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Upload Attendance CSV</DialogTitle>
-            <DialogDescription>Upload a CSV to bulk import attendance records.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <Button variant="outline" onClick={downloadAttendanceTemplate} className="gap-1.5 w-full">
-              <Download className="h-4 w-4" /> Download CSV Template
-            </Button>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong>Columns:</strong> roll_no, date (YYYY-MM-DD), status (P/A/L/H), remark (optional)</p>
-              <p>Students are matched by roll_no. Invalid rows are skipped.</p>
-            </div>
-            <Input type="file" accept=".csv" onChange={handleAttendanceCsvUpload} disabled={csvUploading} />
-            {csvUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CsvUploadDialog
+        open={csvUploadOpen}
+        onOpenChange={setCsvUploadOpen}
+        title="Upload Attendance CSV"
+        description="Upload a CSV to bulk import attendance records."
+        onDownloadTemplate={downloadAttendanceTemplate}
+        onUpload={handleAttendanceCsvUpload}
+        uploading={csvUploading}
+        helpText={
+          <>
+            <p><strong>Columns:</strong> user_id_vedantu (preferred) or roll_no, date (YYYY-MM-DD), status (P/A/L/H), remark (optional)</p>
+            <p>Students are matched by user_id_vedantu first, then roll_no. Invalid rows are skipped.</p>
+          </>
+        }
+      />
     </div>
   );
 };
