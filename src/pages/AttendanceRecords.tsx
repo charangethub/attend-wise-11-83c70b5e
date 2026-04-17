@@ -224,11 +224,10 @@ const AttendanceRecords = () => {
 
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
         <span className="font-medium text-muted-foreground">Legend:</span>
-        <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Full Day Present</span>
-        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">A = Full Day Absent</span>
-        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave</span>
-        <span className="rounded px-2 py-0.5 bg-purple-200 text-purple-700 font-bold">H = Half Day</span>
-        <span className="rounded px-2 py-0.5 bg-orange-200 text-orange-700 font-bold">P:A = Present AM, Absent PM</span>
+        <span className="rounded px-2 py-0.5 bg-success/20 text-success font-bold">P = Present</span>
+        <span className="rounded px-2 py-0.5 bg-destructive/20 text-destructive font-bold">A = Absent</span>
+        <span className="rounded px-2 py-0.5 bg-warning/20 text-warning font-bold">L = Leave / Permission</span>
+        <span className="rounded px-2 py-0.5 bg-blue-200 text-blue-700 font-bold">H = Holiday</span>
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
