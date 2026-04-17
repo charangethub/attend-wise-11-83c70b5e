@@ -190,6 +190,7 @@ export type Database = {
           given_date: string | null
           id: string
           item_type: string
+          quantity: number
           status: string
           student_id: string
         }
@@ -200,6 +201,7 @@ export type Database = {
           given_date?: string | null
           id?: string
           item_type: string
+          quantity?: number
           status?: string
           student_id: string
         }
@@ -210,6 +212,7 @@ export type Database = {
           given_date?: string | null
           id?: string
           item_type?: string
+          quantity?: number
           status?: string
           student_id?: string
         }
