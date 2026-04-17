@@ -5,12 +5,13 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Search, Package, Upload, Download } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Package, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
+import CsvUploadDialog from "@/components/CsvUploadDialog";
+import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
 
 const ITEM_TYPES = [
   "BAG", "CLICKER", "DIARY", "FACE_ID_REG", "HOLDER_ID_CARD", "HW_PLANNER",
@@ -24,8 +25,15 @@ const ITEM_LABELS: Record<string, string> = {
   T_SHIRT: "T-SHIRT", TATVA: "TATVA", VDPP: "VDPP"
 };
 
+// Items where multiple units are commonly given to a single student
+const MULTI_QTY_ITEMS = new Set(["T_SHIRT"]);
+const DEFAULT_MULTI_QTY = 2;
+
 type Student = { id: string; roll_no: string; student_name: string; classroom_name: string; center: string; user_id_vedantu: string };
-type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null };
+type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number };
+type InventoryRow = { item_name: string; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
+
+const normaliseItem = (s: string) => s.trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
 
 const DistributionStatus = () => {
   const { user, userRole } = useAuth();
@@ -36,6 +44,7 @@ const DistributionStatus = () => {
 
   const [students, setStudents] = useState<Student[]>([]);
   const [distMap, setDistMap] = useState<Record<string, Record<string, DistStatus>>>({});
+  const [inventoryByItem, setInventoryByItem] = useState<Record<string, InventoryRow>>({});
   const [loading, setLoading] = useState(true);
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [statusFilterType, setStatusFilterType] = useState("all");
@@ -65,7 +74,7 @@ const DistributionStatus = () => {
         await Promise.all(chunks.map(async chunk => {
           const { data } = await supabase
             .from("distribution_status" as any)
-            .select("student_id, item_type, status, given_date")
+            .select("student_id, item_type, status, given_date, quantity")
             .in("student_id", chunk);
           (data as any[])?.forEach((r: any) => {
             if (!map[r.student_id]) map[r.student_id] = {};
@@ -74,6 +83,24 @@ const DistributionStatus = () => {
         }));
       }
       setDistMap(map);
+
+      // Pull inventory rows so we can show real available stock per item type
+      const { data: inv } = await supabase
+        .from("inventory_items")
+        .select("item_name, current_stock, distributed, damaged, missing, reserved");
+      const invMap: Record<string, InventoryRow> = {};
+      (inv as any[])?.forEach((row: any) => {
+        const key = normaliseItem(row.item_name || "");
+        if (!key) return;
+        // Aggregate if multiple inventory rows share same normalised name
+        if (!invMap[key]) invMap[key] = { item_name: row.item_name, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+        invMap[key].current_stock += row.current_stock ?? 0;
+        invMap[key].distributed += row.distributed ?? 0;
+        invMap[key].damaged += row.damaged ?? 0;
+        invMap[key].missing += row.missing ?? 0;
+        invMap[key].reserved += row.reserved ?? 0;
+      });
+      setInventoryByItem(invMap);
     } finally {
       setLoading(false);
     }
@@ -81,7 +108,10 @@ const DistributionStatus = () => {
 
   useEffect(() => { void fetchData(); }, [fetchData]);
 
-  const classrooms = useMemo(() => Array.from(new Set(students.map(s => s.classroom_name).filter(Boolean))).sort(), [students]);
+  const classrooms = useMemo(
+    () => Array.from(new Set(students.map(s => s.classroom_name).filter(Boolean))).sort(),
+    [students]
+  );
 
   const filtered = useMemo(() => {
     return students.filter(s => {
@@ -94,27 +124,41 @@ const DistributionStatus = () => {
     }).sort((a, b) => a.roll_no.localeCompare(b.roll_no));
   }, [students, classroomFilter, debouncedSearch]);
 
+  // For each item type: how many UNITS distributed (sum of quantity over GIVEN rows)
   const summaries = useMemo(() => {
-    const counts: Record<string, { given: number; total: number }> = {};
-    ITEM_TYPES.forEach(t => { counts[t] = { given: 0, total: students.length }; });
+    const counts: Record<string, { given: number; available: number }> = {};
+    ITEM_TYPES.forEach(t => {
+      const inv = inventoryByItem[t];
+      const available = inv
+        ? Math.max(0, (inv.current_stock ?? 0) - (inv.damaged ?? 0) - (inv.missing ?? 0) - (inv.reserved ?? 0))
+        : 0;
+      counts[t] = { given: 0, available };
+    });
     Object.values(distMap).forEach(items => {
       ITEM_TYPES.forEach(t => {
-        if (items[t]?.status === "GIVEN") counts[t].given++;
+        if (items[t]?.status === "GIVEN") {
+          counts[t].given += items[t]?.quantity ?? 1;
+        }
       });
     });
     return counts;
-  }, [students, distMap]);
+  }, [distMap, inventoryByItem]);
+
+  const getQtyForItem = (itemType: string) =>
+    MULTI_QTY_ITEMS.has(itemType) ? DEFAULT_MULTI_QTY : 1;
 
   const toggleStatus = async (studentId: string, itemType: string) => {
     if (!isAdminOrOwner) return;
     const current = distMap[studentId]?.[itemType]?.status;
     const newStatus = current === "GIVEN" ? "PENDING" : "GIVEN";
+    const qty = getQtyForItem(itemType);
 
     try {
       const { error } = await supabase.from("distribution_status" as any).upsert({
         student_id: studentId,
         item_type: itemType,
         status: newStatus,
+        quantity: newStatus === "GIVEN" ? qty : 1,
         given_date: newStatus === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
         given_by: newStatus === "GIVEN" ? user?.id : null,
         dataset: datasetSlug,
@@ -127,18 +171,21 @@ const DistributionStatus = () => {
           ...prev[studentId],
           [itemType]: {
             student_id: studentId, item_type: itemType, status: newStatus,
+            quantity: newStatus === "GIVEN" ? qty : 1,
             given_date: newStatus === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
           },
         },
       }));
+      // Re-pull inventory to reflect trigger-driven decrement
+      void fetchData();
     } catch {
       toast.error("Failed to update");
     }
   };
 
   const downloadTemplate = () => {
-    const header = ["roll_no", ...ITEM_TYPES.map(t => t)].join(",");
-    const sampleRow = ["ROLL001", ...ITEM_TYPES.map(() => "GIVEN")].join(",");
+    const header = ["user_id_vedantu", "roll_no", ...ITEM_TYPES.map(t => t)].join(",");
+    const sampleRow = ["VED-001", "ROLL001", ...ITEM_TYPES.map(t => MULTI_QTY_ITEMS.has(t) ? "GIVEN:2" : "GIVEN")].join(",");
     const csv = `${header}\n${sampleRow}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -147,51 +194,47 @@ const DistributionStatus = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleCsvUpload = async (file: File) => {
     setCsvUploading(true);
     try {
       const text = await file.text();
       const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
       if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
 
-      const headers = lines[0].split(",").map(h => h.trim().toUpperCase());
-      const rollIdx = headers.findIndex(h => h === "ROLL_NO" || h === "ROLL NO");
-      if (rollIdx === -1) { toast.error("CSV must have a 'roll_no' column"); setCsvUploading(false); return; }
-
-      // Map roll_no to student id
-      const rollMap = new Map(students.map(s => [s.roll_no.toUpperCase(), s.id]));
+      const headers = lines[0].split(",").map(h => h.trim());
+      const lookup = buildStudentLookup(students as any);
       const upserts: any[] = [];
       let skipped = 0;
 
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",").map(c => c.trim());
-        const rollNo = cols[rollIdx]?.toUpperCase();
-        const studentId = rollMap.get(rollNo);
-        if (!studentId) { skipped++; continue; }
+        const matched = findStudentInRow(cols, headers, lookup);
+        if (!matched) { skipped++; continue; }
 
         headers.forEach((h, idx) => {
-          if (idx === rollIdx) return;
-          const itemType = h.replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+          const itemType = normaliseItem(h);
           if (!ITEM_TYPES.includes(itemType as any)) return;
-          const val = cols[idx]?.toUpperCase();
-          if (val === "GIVEN" || val === "PENDING") {
-            upserts.push({
-              student_id: studentId,
-              item_type: itemType,
-              status: val,
-              given_date: val === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
-              given_by: val === "GIVEN" ? user?.id : null,
-              dataset: datasetSlug,
-            });
-          }
+          const raw = (cols[idx] || "").toUpperCase();
+          if (!raw) return;
+          // Accept "GIVEN", "GIVEN:2", "GIVEN(2)", "PENDING"
+          const m = raw.match(/^(GIVEN|PENDING)(?:[:\s(]+(\d+)\)?)?$/);
+          if (!m) return;
+          const status = m[1];
+          const qty = m[2] ? parseInt(m[2], 10) : getQtyForItem(itemType);
+          upserts.push({
+            student_id: matched.id,
+            item_type: itemType,
+            status,
+            quantity: status === "GIVEN" ? qty : 1,
+            given_date: status === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
+            given_by: status === "GIVEN" ? user?.id : null,
+            dataset: datasetSlug,
+          });
         });
       }
 
       if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
 
-      // Upsert in chunks
       for (let i = 0; i < upserts.length; i += 50) {
         await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type" });
       }
@@ -225,28 +268,38 @@ const DistributionStatus = () => {
         </div>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary Cards — Given / Available stock */}
       <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground font-semibold uppercase">TOTAL STUDENTS</p>
           <p className="text-2xl font-bold text-foreground">{students.length}</p>
         </div>
-        {ITEM_TYPES.map(t => (
-          <div key={t} className="rounded-xl border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
-            <p className="text-lg font-bold">
-              <span className={summaries[t]?.given > 0 ? "text-green-500" : "text-destructive"}>{summaries[t]?.given ?? 0}</span>
-              <span className="text-muted-foreground text-sm"> / {summaries[t]?.total ?? 0}</span>
-            </p>
-          </div>
-        ))}
+        {ITEM_TYPES.map(t => {
+          const s = summaries[t] ?? { given: 0, available: 0 };
+          const remaining = s.available;
+          return (
+            <div key={t} className="rounded-xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
+              <p className="text-lg font-bold">
+                <span className={s.given > 0 ? "text-success" : "text-muted-foreground"}>{s.given}</span>
+                <span className="text-muted-foreground text-sm"> given</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Stock left: <span className={remaining > 0 ? "text-success font-semibold" : "text-destructive font-semibold"}>{remaining}</span>
+              </p>
+            </div>
+          );
+        })}
       </div>
 
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-1">
-          <Button variant={statusFilterType === "all" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("all")}
-            className={statusFilterType === "all" ? "bg-green-600 text-white hover:bg-green-700" : ""}>Given</Button>
+          <Button variant={statusFilterType === "all" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("all")}>
+            All
+          </Button>
+          <Button variant={statusFilterType === "given" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("given")}
+            className={statusFilterType === "given" ? "bg-success text-success-foreground hover:bg-success/90" : ""}>Given</Button>
           <Button variant={statusFilterType === "pending" ? "default" : "outline"} size="sm" onClick={() => setStatusFilterType("pending")}
             className={statusFilterType === "pending" ? "bg-destructive text-destructive-foreground" : ""}>Pending</Button>
         </div>
@@ -259,14 +312,6 @@ const DistributionStatus = () => {
           <SelectContent>
             <SelectItem value="all">All Classrooms</SelectItem>
             {classrooms.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={statusFilterType} onValueChange={setStatusFilterType}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="All Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="given">Given Only</SelectItem>
-            <SelectItem value="pending">Pending Only</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -290,9 +335,12 @@ const DistributionStatus = () => {
                     <span className="text-xs text-muted-foreground ml-1">({s.roll_no})</span>
                   </td>
                   {ITEM_TYPES.map(t => {
-                    const status = distMap[s.id]?.[t]?.status || "PENDING";
+                    const row = distMap[s.id]?.[t];
+                    const status = row?.status || "PENDING";
+                    const qty = row?.quantity ?? 1;
                     if (statusFilterType === "given" && status !== "GIVEN") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     if (statusFilterType === "pending" && status !== "PENDING") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
+                    const showQty = status === "GIVEN" && (MULTI_QTY_ITEMS.has(t) || qty > 1);
                     return (
                       <td key={t} className="px-3 py-2.5 text-center">
                         <button
@@ -300,11 +348,11 @@ const DistributionStatus = () => {
                           disabled={!isAdminOrOwner}
                           className={`rounded px-2.5 py-1 text-[10px] font-bold transition-colors ${
                             status === "GIVEN"
-                              ? "bg-green-600 text-white"
+                              ? "bg-success text-success-foreground"
                               : "bg-destructive text-destructive-foreground"
                           } ${!isAdminOrOwner ? "cursor-default" : "hover:opacity-80"}`}
                         >
-                          {status}
+                          {status}{showQty ? ` (${qty})` : ""}
                         </button>
                       </td>
                     );
@@ -316,32 +364,22 @@ const DistributionStatus = () => {
         </div>
       )}
 
-      {/* CSV Upload Dialog */}
-      <Dialog open={csvUploadOpen} onOpenChange={setCsvUploadOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Upload Distribution CSV</DialogTitle>
-            <DialogDescription>Upload a CSV file to bulk update distribution statuses.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <Button variant="outline" onClick={downloadTemplate} className="gap-1.5 w-full">
-              <Download className="h-4 w-4" /> Download CSV Template
-            </Button>
-            <div className="text-xs text-muted-foreground space-y-1">
-              <p><strong>Template columns:</strong> roll_no, then item type columns (BAG, CLICKER, DIARY, etc.)</p>
-              <p><strong>Values:</strong> Use GIVEN or PENDING in each cell</p>
-              <p>Students are matched by roll_no. Unknown roll numbers are skipped.</p>
-            </div>
-            <Input
-              type="file"
-              accept=".csv"
-              onChange={handleCsvUpload}
-              disabled={csvUploading}
-            />
-            {csvUploading && <p className="text-sm text-muted-foreground">Uploading...</p>}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CsvUploadDialog
+        open={csvUploadOpen}
+        onOpenChange={setCsvUploadOpen}
+        title="Upload Distribution CSV"
+        description="Bulk update distribution status for many students."
+        onDownloadTemplate={downloadTemplate}
+        onUpload={handleCsvUpload}
+        uploading={csvUploading}
+        helpText={
+          <>
+            <p><strong>Columns:</strong> user_id_vedantu (preferred) or roll_no, then item types (BAG, CLICKER, T_SHIRT, …)</p>
+            <p><strong>Values:</strong> <code>GIVEN</code>, <code>PENDING</code>, or <code>GIVEN:2</code> for multi-quantity (e.g. 2 T-shirts).</p>
+            <p>Students are matched by user_id_vedantu first, then roll_no.</p>
+          </>
+        }
+      />
     </div>
   );
 };
