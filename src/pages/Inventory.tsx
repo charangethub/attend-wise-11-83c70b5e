@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CsvUploadDialog from "@/components/CsvUploadDialog";
 
 type InventoryItem = {
   id: string; item_name: string; category: string; sub_category: string; grade: string;
@@ -41,6 +42,8 @@ const Inventory = () => {
   const [reportOpen, setReportOpen] = useState(false);
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [addingStock, setAddingStock] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
   const [detailItem, setDetailItem] = useState<InventoryItem | null>(null);
   const [activeTab, setActiveTab] = useState("stock");
 
@@ -189,6 +192,7 @@ const Inventory = () => {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isAdminOrOwner && <Button onClick={() => setAddStockOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add Stock</Button>}
+          {isOwner && <Button variant="outline" onClick={() => setCsvOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>}
           <Button variant="outline" onClick={() => { fetchData(); fetchLogs(); }} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Refresh</Button>
         </div>
       </div>
