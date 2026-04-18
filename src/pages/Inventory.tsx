@@ -78,6 +78,7 @@ const Inventory = () => {
   }, [items, debouncedSearch]);
 
   const totalStock = items.reduce((s, i) => s + (i.current_stock ?? i.ytd_received ?? 0), 0);
+  const totalDistributed = items.reduce((s, i) => s + (i.distributed ?? 0), 0);
   const totalAvailable = items.reduce((s, i) => s + Math.max(0, (i.current_stock ?? 0) - (i.damaged ?? 0) - (i.missing ?? 0) - (i.reserved ?? 0)), 0);
   const totalDamaged = items.reduce((s, i) => s + (i.damaged ?? 0), 0);
   const criticalItems = items.filter(i => {
@@ -245,7 +246,7 @@ const Inventory = () => {
     const dmg = dirty?.damaged ?? item.damaged ?? 0;
     const miss = dirty?.missing ?? item.missing ?? 0;
     const res = dirty?.reserved ?? item.reserved ?? 0;
-    return stock - dmg - miss - res;
+    return Math.max(0, stock - dmg - miss - res);
   };
 
   const reportText = useMemo(() => {
@@ -282,10 +283,11 @@ const Inventory = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
         {[
           { label: "TOTAL ITEMS", value: items.length, icon: BarChart3 },
-          { label: "TOTAL STOCK", value: totalStock },
+          { label: "CURRENT STOCK", value: totalStock },
+          { label: "DISTRIBUTED", value: totalDistributed },
           { label: "AVAILABLE", value: totalAvailable, color: "text-green-500" },
           { label: "DAMAGED", value: totalDamaged, color: totalDamaged > 0 ? "text-destructive" : undefined },
           { label: "CRITICAL ITEMS", value: criticalItems, color: criticalItems > 0 ? "text-destructive" : undefined },
@@ -336,6 +338,7 @@ const Inventory = () => {
                     <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">SIZE</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">YTD RECEIVED</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">CURRENT STOCK</th>
+                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">DISTRIBUTED</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">DAMAGED</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">MISSING</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">RESERVED</th>
@@ -361,6 +364,7 @@ const Inventory = () => {
                         <td className="px-3 py-2.5 text-center">
                           {editMode ? <Input type="number" className="w-20 h-7 text-center mx-auto" value={dirty?.current_stock ?? item.current_stock ?? 0} onChange={e => handleFieldChange(item.id, "current_stock", parseInt(e.target.value) || 0)} /> : (item.current_stock ?? 0)}
                         </td>
+                        <td className="px-3 py-2.5 text-center font-medium">{item.distributed ?? 0}</td>
                         <td className="px-3 py-2.5 text-center">
                           {editMode ? <Input type="number" className="w-20 h-7 text-center mx-auto" value={dirty?.damaged ?? item.damaged ?? 0} onChange={e => handleFieldChange(item.id, "damaged", parseInt(e.target.value) || 0)} /> : (item.damaged ?? 0)}
                         </td>
@@ -382,7 +386,7 @@ const Inventory = () => {
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">No inventory items found</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={14} className="px-4 py-12 text-center text-muted-foreground">No inventory items found</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -454,7 +458,7 @@ const Inventory = () => {
               {[
                 ["Zone", detailItem.zone], ["Centre", detailItem.centre], ["Grade", detailItem.grade], ["Size", detailItem.size],
                 ["YTD Received", detailItem.ytd_received], ["Current Stock", detailItem.current_stock],
-                ["Damaged", detailItem.damaged], ["Missing", detailItem.missing], ["Reserved", detailItem.reserved],
+                ["Distributed", detailItem.distributed], ["Damaged", detailItem.damaged], ["Missing", detailItem.missing], ["Reserved", detailItem.reserved],
                 ["Available", getAvailable(detailItem)],
               ].map(([k, v]) => (
                 <div key={k as string} className="flex justify-between"><span className="text-muted-foreground">{k}:</span><span className="font-medium">{v || "—"}</span></div>
