@@ -12,6 +12,7 @@ import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
 import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 const ITEM_TYPES = [
   "BAG", "CLICKER", "DIARY", "FACE_ID_REG", "HOLDER_ID_CARD", "HW_PLANNER",
@@ -33,7 +34,17 @@ type Student = { id: string; roll_no: string; student_name: string; classroom_na
 type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number };
 type InventoryRow = { item_name: string; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
 
-const normaliseItem = (s: string) => s.trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+/** Normalise raw label into a canonical item key.
+ *  - VDPP_BOOKLET_1, VDPP-Booklet 2, VDPP HINDI → VDPP
+ *  - T_SHIRT_S, T-Shirt M, TSHIRT_L → T_SHIRT
+ */
+const canonicalItem = (s: string) => {
+  const k = (s || "").trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+  if (k.startsWith("VDPP")) return "VDPP";
+  if (k.startsWith("T_SHIRT") || k === "TSHIRT" || k.startsWith("TSHIRT")) return "T_SHIRT";
+  return k;
+};
+const normaliseItem = canonicalItem;
 
 const DistributionStatus = () => {
   const { user, userRole } = useAuth();
@@ -77,8 +88,15 @@ const DistributionStatus = () => {
             .select("student_id, item_type, status, given_date, quantity")
             .in("student_id", chunk);
           (data as any[])?.forEach((r: any) => {
+            const canonical = canonicalItem(r.item_type);
             if (!map[r.student_id]) map[r.student_id] = {};
-            map[r.student_id][r.item_type] = r;
+            // Sum quantities if multiple raw rows collapse into the same canonical bucket
+            const existing = map[r.student_id][canonical];
+            if (existing && existing.status === "GIVEN" && r.status === "GIVEN") {
+              existing.quantity = (existing.quantity ?? 1) + (r.quantity ?? 1);
+            } else if (!existing || r.status === "GIVEN") {
+              map[r.student_id][canonical] = { ...r, item_type: canonical };
+            }
           });
         }));
       }
@@ -198,21 +216,21 @@ const DistributionStatus = () => {
     setCsvUploading(true);
     try {
       const text = await file.text();
-      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+      const rows = parseCsv(text);
+      if (rows.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
 
-      const headers = lines[0].split(",").map(h => h.trim());
+      const headers = rows[0].map((h) => normalizeHeader(h));
       const lookup = buildStudentLookup(students as any);
       const upserts: any[] = [];
-      let skipped = 0;
+      const skippedReasons: string[] = [];
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map(c => c.trim());
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
-        if (!matched) { skipped++; continue; }
+        if (!matched) { skippedReasons.push(`Row ${i + 1}: no student match`); continue; }
 
         headers.forEach((h, idx) => {
-          const itemType = normaliseItem(h);
+          const itemType = canonicalItem(h);
           if (!ITEM_TYPES.includes(itemType as any)) return;
           const raw = (cols[idx] || "").toUpperCase();
           if (!raw) return;
@@ -233,13 +251,17 @@ const DistributionStatus = () => {
         });
       }
 
-      if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+      if (upserts.length === 0) {
+        console.warn("Distribution CSV: no valid rows.", skippedReasons);
+        toast.error(`No valid rows found. ${skippedReasons.slice(0, 3).join(" • ")}`);
+        setCsvUploading(false); return;
+      }
 
       for (let i = 0; i < upserts.length; i += 50) {
         await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type" });
       }
 
-      toast.success(`Uploaded ${upserts.length} records (${skipped} skipped)`);
+      toast.success(`Uploaded ${upserts.length} records (${skippedReasons.length} skipped)`);
       setCsvUploadOpen(false);
       fetchData();
     } catch (err: any) { toast.error("Upload failed: " + err.message); }

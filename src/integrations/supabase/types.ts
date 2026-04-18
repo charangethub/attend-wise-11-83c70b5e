@@ -714,6 +714,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      canonical_item_key: { Args: { _raw: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

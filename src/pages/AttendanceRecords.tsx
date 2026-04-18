@@ -14,6 +14,7 @@ import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkToolt
 import { toast } from "sonner";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
 import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -54,20 +55,20 @@ const AttendanceRecords = () => {
     setCsvUploading(true);
     try {
       const text = await file.text();
-      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+      const rows = parseCsv(text);
+      if (rows.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
 
-      const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
+      const headers = rows[0].map((h) => normalizeHeader(h));
       const dateIdx = headers.indexOf("date");
       const statusIdx = headers.indexOf("status");
       const remarkIdx = headers.indexOf("remark");
+      const hasIdent = headers.some(h => ["roll_no", "rollno", "user_id_vedantu", "user_id", "userid"].includes(h));
 
       if (dateIdx === -1 || statusIdx === -1) {
         toast.error("CSV must have date and status columns");
         setCsvUploading(false); return;
       }
-      if (headers.findIndex(h => h === "roll_no" || h === "rollno") === -1
-        && headers.findIndex(h => h === "user_id_vedantu" || h === "user_id" || h === "userid") === -1) {
+      if (!hasIdent) {
         toast.error("CSV must include either roll_no or user_id_vedantu");
         setCsvUploading(false); return;
       }
@@ -75,17 +76,17 @@ const AttendanceRecords = () => {
       const lookup = buildStudentLookup(students as any);
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const upserts: any[] = [];
-      let skipped = 0;
+      const skippedReasons: string[] = [];
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map(c => c.trim());
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
-        if (!matched) { skipped++; continue; }
+        if (!matched) { skippedReasons.push(`Row ${i + 1}: no matching student`); continue; }
         const date = cols[dateIdx];
-        const status = cols[statusIdx]?.toUpperCase();
+        const status = (cols[statusIdx] || "").toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
-        if (!["P", "A", "L", "H"].includes(status)) { skipped++; continue; }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped++; continue; }
+        if (!["P", "A", "L", "H"].includes(status)) { skippedReasons.push(`Row ${i + 1}: invalid status "${status}"`); continue; }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skippedReasons.push(`Row ${i + 1}: invalid date "${date}"`); continue; }
 
         upserts.push({
           student_id: matched.id,
@@ -97,7 +98,11 @@ const AttendanceRecords = () => {
         });
       }
 
-      if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+      if (upserts.length === 0) {
+        console.warn("Attendance CSV: no valid rows.", skippedReasons);
+        toast.error(`No valid rows found. ${skippedReasons.slice(0, 3).join(" • ")}`);
+        setCsvUploading(false); return;
+      }
 
       for (let i = 0; i < upserts.length; i += 50) {
         const { error } = await supabase.from("attendance").upsert(
@@ -107,7 +112,8 @@ const AttendanceRecords = () => {
         if (error) throw error;
       }
 
-      toast.success(`Uploaded ${upserts.length} attendance records (${skipped} skipped)`);
+      toast.success(`Uploaded ${upserts.length} attendance records (${skippedReasons.length} skipped)`);
+      if (skippedReasons.length > 0) console.info("Skipped rows:", skippedReasons);
       setCsvUploadOpen(false);
       fetchData();
     } catch (err: any) { toast.error("Upload failed: " + err.message); }
