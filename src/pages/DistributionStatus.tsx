@@ -88,8 +88,15 @@ const DistributionStatus = () => {
             .select("student_id, item_type, status, given_date, quantity")
             .in("student_id", chunk);
           (data as any[])?.forEach((r: any) => {
+            const canonical = canonicalItem(r.item_type);
             if (!map[r.student_id]) map[r.student_id] = {};
-            map[r.student_id][r.item_type] = r;
+            // Sum quantities if multiple raw rows collapse into the same canonical bucket
+            const existing = map[r.student_id][canonical];
+            if (existing && existing.status === "GIVEN" && r.status === "GIVEN") {
+              existing.quantity = (existing.quantity ?? 1) + (r.quantity ?? 1);
+            } else if (!existing || r.status === "GIVEN") {
+              map[r.student_id][canonical] = { ...r, item_type: canonical };
+            }
           });
         }));
       }
