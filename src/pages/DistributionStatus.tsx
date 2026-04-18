@@ -216,21 +216,21 @@ const DistributionStatus = () => {
     setCsvUploading(true);
     try {
       const text = await file.text();
-      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+      const rows = parseCsv(text);
+      if (rows.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
 
-      const headers = lines[0].split(",").map(h => h.trim());
+      const headers = rows[0].map((h) => normalizeHeader(h));
       const lookup = buildStudentLookup(students as any);
       const upserts: any[] = [];
-      let skipped = 0;
+      const skippedReasons: string[] = [];
 
-      for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].split(",").map(c => c.trim());
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
-        if (!matched) { skipped++; continue; }
+        if (!matched) { skippedReasons.push(`Row ${i + 1}: no student match`); continue; }
 
         headers.forEach((h, idx) => {
-          const itemType = normaliseItem(h);
+          const itemType = canonicalItem(h);
           if (!ITEM_TYPES.includes(itemType as any)) return;
           const raw = (cols[idx] || "").toUpperCase();
           if (!raw) return;
@@ -251,13 +251,17 @@ const DistributionStatus = () => {
         });
       }
 
-      if (upserts.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+      if (upserts.length === 0) {
+        console.warn("Distribution CSV: no valid rows.", skippedReasons);
+        toast.error(`No valid rows found. ${skippedReasons.slice(0, 3).join(" • ")}`);
+        setCsvUploading(false); return;
+      }
 
       for (let i = 0; i < upserts.length; i += 50) {
         await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type" });
       }
 
-      toast.success(`Uploaded ${upserts.length} records (${skipped} skipped)`);
+      toast.success(`Uploaded ${upserts.length} records (${skippedReasons.length} skipped)`);
       setCsvUploadOpen(false);
       fetchData();
     } catch (err: any) { toast.error("Upload failed: " + err.message); }
