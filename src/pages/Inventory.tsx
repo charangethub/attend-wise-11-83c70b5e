@@ -474,6 +474,52 @@ const Inventory = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CSV Upload Dialog */}
+      <CsvUploadDialog
+        open={csvOpen}
+        onOpenChange={setCsvOpen}
+        title="Upload Inventory CSV"
+        description="Bulk-add or update inventory items. Matches by item_name + grade + size."
+        templateLabel="Download Inventory Template"
+        onDownloadTemplate={downloadInventoryTemplate}
+        onUpload={handleInventoryCsvUpload}
+        uploading={csvUploading}
+        helpText={
+          <>
+            <p>Required column: <code>item_name</code></p>
+            <p>Optional: zone, centre, grade, size, ytd_received, current_stock, damaged, missing, reserved</p>
+          </>
+        }
+      />
+
+      {/* Email Report Dialog */}
+      <Dialog open={emailReportOpen} onOpenChange={setEmailReportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Email Inventory Report</DialogTitle>
+            <DialogDescription>A formatted HTML table will be sent to the recipient below.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-xs">Recipient email</Label>
+              <Input
+                type="email"
+                value={emailRecipient}
+                onChange={(e) => setEmailRecipient(e.target.value)}
+                placeholder={user?.email ?? "name@example.com"}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">Defaults to your registered email. You can override it.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailReportOpen(false)} disabled={sendingEmail}>Cancel</Button>
+            <Button onClick={handleSendEmailReport} disabled={sendingEmail} className="gap-1.5">
+              <Send className="h-4 w-4" /> {sendingEmail ? "Sending…" : "Send Report"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
