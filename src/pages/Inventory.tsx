@@ -7,10 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye, Upload, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 type InventoryItem = {
   id: string; item_name: string; category: string; sub_category: string; grade: string;
