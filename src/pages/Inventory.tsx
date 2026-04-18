@@ -41,6 +41,9 @@ const Inventory = () => {
   const [dirtyRows, setDirtyRows] = useState<Record<string, Partial<InventoryItem>>>({});
   const [saving, setSaving] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [emailReportOpen, setEmailReportOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [addingStock, setAddingStock] = useState(false);
   const [csvOpen, setCsvOpen] = useState(false);
