@@ -315,6 +315,7 @@ const Inventory = () => {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setReportOpen(true)} className="gap-1.5"><Send className="h-4 w-4" /> Report</Button>
+              <Button variant="outline" size="sm" onClick={() => { setEmailRecipient(user?.email ?? ""); setEmailReportOpen(true); }} className="gap-1.5"><Mail className="h-4 w-4" /> Email Report</Button>
               {isOwner && !editMode && <Button size="sm" onClick={() => setEditMode(true)} className="gap-1.5"><Pencil className="h-4 w-4" /> Edit</Button>}
               {editMode && <Button size="sm" onClick={handleSaveAll} disabled={saving} className="gap-1.5"><Save className="h-4 w-4" /> {saving ? "Saving..." : "Save"}</Button>}
               {editMode && <Button variant="outline" size="sm" onClick={() => { setEditMode(false); setDirtyRows({}); }}>Cancel</Button>}
