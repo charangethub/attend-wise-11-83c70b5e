@@ -14,6 +14,7 @@ import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkToolt
 import { toast } from "sonner";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
 import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
