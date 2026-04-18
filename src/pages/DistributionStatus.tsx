@@ -12,6 +12,7 @@ import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
 import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 const ITEM_TYPES = [
   "BAG", "CLICKER", "DIARY", "FACE_ID_REG", "HOLDER_ID_CARD", "HW_PLANNER",
@@ -33,7 +34,17 @@ type Student = { id: string; roll_no: string; student_name: string; classroom_na
 type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number };
 type InventoryRow = { item_name: string; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
 
-const normaliseItem = (s: string) => s.trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+/** Normalise raw label into a canonical item key.
+ *  - VDPP_BOOKLET_1, VDPP-Booklet 2, VDPP HINDI → VDPP
+ *  - T_SHIRT_S, T-Shirt M, TSHIRT_L → T_SHIRT
+ */
+const canonicalItem = (s: string) => {
+  const k = (s || "").trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
+  if (k.startsWith("VDPP")) return "VDPP";
+  if (k.startsWith("T_SHIRT") || k === "TSHIRT" || k.startsWith("TSHIRT")) return "T_SHIRT";
+  return k;
+};
+const normaliseItem = canonicalItem;
 
 const DistributionStatus = () => {
   const { user, userRole } = useAuth();
