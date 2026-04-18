@@ -121,6 +121,86 @@ const Inventory = () => {
     setAddingStock(false);
   };
 
+  const downloadInventoryTemplate = () => {
+    const header = ["item_name","zone","centre","grade","size","ytd_received","current_stock","damaged","missing","reserved"].join(",");
+    const sample = ["VDPP","TS","ADILABAD","11-JEE-A","","100","100","0","0","0"].join(",");
+    const csv = `${header}\n${sample}\n`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "inventory_upload_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleInventoryCsvUpload = async (file: File) => {
+    setCsvUploading(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+      const headers = rows[0].map(normalizeHeader);
+      const nameIdx = headers.indexOf("item_name");
+      if (nameIdx === -1) { toast.error("CSV must include item_name column"); setCsvUploading(false); return; }
+      const get = (cols: string[], col: string) => { const i = headers.indexOf(col); return i >= 0 ? (cols[i] ?? "").trim() : ""; };
+      const num = (v: string) => parseInt(v) || 0;
+
+      const records: any[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].map(c => (c ?? "").trim());
+        const name = cols[nameIdx]; if (!name) continue;
+        records.push({
+          item_name: name,
+          category: name,
+          zone: get(cols, "zone"),
+          centre: get(cols, "centre"),
+          grade: get(cols, "grade"),
+          size: get(cols, "size"),
+          ytd_received: num(get(cols, "ytd_received")),
+          current_stock: num(get(cols, "current_stock")),
+          damaged: num(get(cols, "damaged")),
+          missing: num(get(cols, "missing")),
+          reserved: num(get(cols, "reserved")),
+          total_received: num(get(cols, "ytd_received")),
+          updated_by: user?.id,
+        });
+      }
+      if (records.length === 0) { toast.error("No valid rows found"); setCsvUploading(false); return; }
+
+      // Upsert by (item_name + grade + size) by checking existing
+      let inserted = 0, updated = 0;
+      for (const rec of records) {
+        const { data: existing } = await supabase.from("inventory_items").select("id")
+          .eq("item_name", rec.item_name).eq("grade", rec.grade ?? "").eq("size", rec.size ?? "").maybeSingle();
+        if (existing?.id) {
+          await supabase.from("inventory_items").update({ ...rec, updated_at: new Date().toISOString() } as any).eq("id", existing.id);
+          updated++;
+        } else {
+          await supabase.from("inventory_items").insert(rec as any);
+          inserted++;
+        }
+      }
+      toast.success(`Inventory CSV: ${inserted} added, ${updated} updated`);
+      setCsvOpen(false);
+      fetchData(); fetchLogs();
+    } catch (err: any) { toast.error("Upload failed: " + err.message); }
+    setCsvUploading(false);
+  };
+
+  const handleSendEmailReport = async () => {
+    const target = emailRecipient.trim() || user?.email || "";
+    if (!target) { toast.error("Enter a recipient email"); return; }
+    setSendingEmail(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-inventory-report", { body: { email: target } });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      toast.success(`📧 Inventory report sent to ${target}`);
+      setEmailReportOpen(false);
+    } catch (err: any) {
+      toast.error("Send failed: " + (err.message || "Unknown"));
+    }
+    setSendingEmail(false);
+  };
+
   const handleFieldChange = (id: string, field: string, value: number) => {
     setDirtyRows(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
