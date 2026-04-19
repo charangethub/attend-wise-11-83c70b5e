@@ -193,11 +193,14 @@ const Inventory = () => {
     try {
       const { data, error } = await supabase.functions.invoke("send-inventory-report", { body: { email: target } });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      toast.success(`📧 Inventory report sent to ${target}`);
+      if ((data as any)?.status !== "sent") {
+        toast.error("Email failed to send");
+        return;
+      }
+      toast.success("Notification sent successfully");
       setEmailReportOpen(false);
     } catch (err: any) {
-      toast.error("Send failed: " + (err.message || "Unknown"));
+      toast.error("Email failed to send: " + (err.message || "Unknown"));
     }
     setSendingEmail(false);
   };

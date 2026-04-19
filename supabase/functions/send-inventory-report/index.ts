@@ -1,5 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+const GAS_EMAIL_URL = "https://script.google.com/macros/s/AKfycbwHlo7IApXlS4W15sWucopyRhpUKal8PYLtNmiXeBqYyu0RX4SXvUd5whDw2t7RxYZjdA/exec";
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -19,7 +21,6 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const resendKey = Deno.env.get('RESEND_API_KEY');
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
@@ -36,12 +37,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!resendKey) {
-      return new Response(JSON.stringify({
-        error: 'RESEND_API_KEY is not configured. Add it under Lovable Cloud secrets to enable email reports.',
-      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
     const body = await req.json().catch(() => ({}));
     const recipientEmail: string = (body.email || user.email || '').trim();
     if (!recipientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipientEmail)) {
@@ -50,7 +45,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Pull inventory using service role so RLS doesn't block reporting
     const admin = createClient(supabaseUrl, serviceRoleKey);
     const { data: items, error: invErr } = await admin
       .from('inventory_items')
@@ -93,7 +87,7 @@ Deno.serve(async (req) => {
         <div style="padding:18px 24px;display:flex;flex-wrap:wrap;gap:10px;background:#f9fafb;border-bottom:1px solid #e5e7eb;">
           ${[
             ['Total Items', rows.length],
-            ['Total Stock', totals.stock],
+            ['Current Stock', totals.stock],
             ['Available', totals.available],
             ['Distributed', totals.distributed],
             ['Damaged', totals.damaged],
@@ -123,33 +117,32 @@ Deno.serve(async (req) => {
       </div>
     </body></html>`;
 
-    const resendRes = await fetch('https://api.resend.com/emails', {
+    const subject = `📦 Inventory Report — ${reportDate}`;
+
+    // Send via Google Apps Script relay. Use text/plain to avoid CORS preflight on GAS.
+    const gasRes = await fetch(GAS_EMAIL_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${resendKey}`,
-        'Content-Type': 'application/json',
-      },
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({
-        from: 'Inventory Report <onboarding@resend.dev>',
-        to: [recipientEmail],
-        subject: `📦 Inventory Report — ${reportDate}`,
-        html,
+        to: recipientEmail,
+        subject,
+        body: html,
       }),
     });
 
-    const resJson = await resendRes.json().catch(() => ({}));
-    if (!resendRes.ok) {
-      const msg = resJson?.message || resJson?.error || 'Resend send failed';
-      // Friendlier message for the common test-domain restriction
-      const friendly = /testing emails to your own email address/i.test(msg)
-        ? `Resend is in test mode: it can only send to the account owner's email. Verify a domain at resend.com/domains and update the "from" address, or set up Lovable Emails for branded sending.`
-        : msg;
-      return new Response(JSON.stringify({ error: friendly, detail: resJson }), {
+    const text = await gasRes.text();
+    let resJson: any = {};
+    try { resJson = JSON.parse(text); } catch { resJson = { raw: text }; }
+
+    if (!gasRes.ok || resJson?.status !== 'sent') {
+      const msg = resJson?.message || resJson?.error || `GAS relay failed (HTTP ${gasRes.status})`;
+      return new Response(JSON.stringify({ error: msg, detail: resJson }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    return new Response(JSON.stringify({ success: true, sentTo: recipientEmail, items: rows.length }), {
+    return new Response(JSON.stringify({ success: true, status: 'sent', sentTo: recipientEmail, items: rows.length }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
