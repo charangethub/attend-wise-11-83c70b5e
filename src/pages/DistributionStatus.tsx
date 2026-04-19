@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { ArrowLeft, RefreshCw, Search, Package, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -30,21 +31,31 @@ const ITEM_LABELS: Record<string, string> = {
 const MULTI_QTY_ITEMS = new Set(["T_SHIRT"]);
 const DEFAULT_MULTI_QTY = 2;
 
-type Student = { id: string; roll_no: string; student_name: string; classroom_name: string; center: string; user_id_vedantu: string };
-type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number };
-type InventoryRow = { item_name: string; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
+const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
+const SIZED_ITEMS = new Set(["T_SHIRT"]);
 
-/** Normalise raw label into a canonical item key.
- *  - VDPP_BOOKLET_1, VDPP-Booklet 2, VDPP HINDI → VDPP
- *  - T_SHIRT_S, T-Shirt M, TSHIRT_L → T_SHIRT
- */
+type Student = { id: string; roll_no: string; student_name: string; classroom_name: string; center: string; user_id_vedantu: string };
+type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number; size?: string | null };
+type InventoryRow = { item_name: string; size?: string | null; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
+
+/** Normalise raw label into a canonical item key. Preserves T-shirt size when present. */
 const canonicalItem = (s: string) => {
   const k = (s || "").trim().toUpperCase().replace(/[\s-]+/g, "_").replace(/[^A-Z0-9_]/g, "");
   if (k.startsWith("VDPP")) return "VDPP";
-  if (k.startsWith("T_SHIRT") || k === "TSHIRT" || k.startsWith("TSHIRT")) return "T_SHIRT";
+  if (k.startsWith("T_SHIRT") || k === "TSHIRT" || k.startsWith("TSHIRT")) {
+    const sz = k.replace(/^T_?SHIRT_?/, "");
+    if (TSHIRT_SIZES.includes(sz as any)) return `T_SHIRT_${sz}`;
+    return "T_SHIRT";
+  }
   return k;
 };
-const normaliseItem = canonicalItem;
+/** Base canonical without size suffix (used for grouping by item type column) */
+const baseCanonical = (s: string) => {
+  const c = canonicalItem(s);
+  return c.startsWith("T_SHIRT_") ? "T_SHIRT" : c;
+};
+/** Inventory normalisation: collapses sized rows back to base item for whole-bucket aggregation */
+const normaliseItem = baseCanonical;
 
 const DistributionStatus = () => {
   const { user, userRole } = useAuth();
@@ -56,6 +67,8 @@ const DistributionStatus = () => {
   const [students, setStudents] = useState<Student[]>([]);
   const [distMap, setDistMap] = useState<Record<string, Record<string, DistStatus>>>({});
   const [inventoryByItem, setInventoryByItem] = useState<Record<string, InventoryRow>>({});
+  // Per-size inventory for T-shirts (key = size, e.g. "M")
+  const [tshirtBySize, setTshirtBySize] = useState<Record<string, InventoryRow>>({});
   const [loading, setLoading] = useState(true);
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [statusFilterType, setStatusFilterType] = useState("all");
@@ -63,6 +76,7 @@ const DistributionStatus = () => {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [csvUploadOpen, setCsvUploadOpen] = useState(false);
   const [csvUploading, setCsvUploading] = useState(false);
+  const [openSizePicker, setOpenSizePicker] = useState<string | null>(null); // key = `${studentId}:${itemType}`
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
@@ -85,40 +99,55 @@ const DistributionStatus = () => {
         await Promise.all(chunks.map(async chunk => {
           const { data } = await supabase
             .from("distribution_status" as any)
-            .select("student_id, item_type, status, given_date, quantity")
+            .select("student_id, item_type, status, given_date, quantity, size")
             .in("student_id", chunk);
           (data as any[])?.forEach((r: any) => {
-            const canonical = canonicalItem(r.item_type);
+            // Group rows under base item type (so T_SHIRT_L, T_SHIRT_M live in same column)
+            const base = baseCanonical(r.item_type);
             if (!map[r.student_id]) map[r.student_id] = {};
-            // Sum quantities if multiple raw rows collapse into the same canonical bucket
-            const existing = map[r.student_id][canonical];
+            const existing = map[r.student_id][base];
+            const incoming: DistStatus = { ...r, item_type: base, size: r.size ?? null };
             if (existing && existing.status === "GIVEN" && r.status === "GIVEN") {
               existing.quantity = (existing.quantity ?? 1) + (r.quantity ?? 1);
+              if (!existing.size && incoming.size) existing.size = incoming.size;
             } else if (!existing || r.status === "GIVEN") {
-              map[r.student_id][canonical] = { ...r, item_type: canonical };
+              map[r.student_id][base] = incoming;
             }
           });
         }));
       }
       setDistMap(map);
 
-      // Pull inventory rows so we can show real available stock per item type
+      // Inventory rows
       const { data: inv } = await supabase
         .from("inventory_items")
-        .select("item_name, current_stock, distributed, damaged, missing, reserved");
+        .select("item_name, size, current_stock, distributed, damaged, missing, reserved");
       const invMap: Record<string, InventoryRow> = {};
+      const tshirtMap: Record<string, InventoryRow> = {};
       (inv as any[])?.forEach((row: any) => {
         const key = normaliseItem(row.item_name || "");
         if (!key) return;
-        // Aggregate if multiple inventory rows share same normalised name
         if (!invMap[key]) invMap[key] = { item_name: row.item_name, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
         invMap[key].current_stock += row.current_stock ?? 0;
         invMap[key].distributed += row.distributed ?? 0;
         invMap[key].damaged += row.damaged ?? 0;
         invMap[key].missing += row.missing ?? 0;
         invMap[key].reserved += row.reserved ?? 0;
+
+        if (key === "T_SHIRT") {
+          const sz = (row.size || "").trim().toUpperCase();
+          if (sz && TSHIRT_SIZES.includes(sz as any)) {
+            if (!tshirtMap[sz]) tshirtMap[sz] = { item_name: row.item_name, size: sz, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+            tshirtMap[sz].current_stock += row.current_stock ?? 0;
+            tshirtMap[sz].distributed += row.distributed ?? 0;
+            tshirtMap[sz].damaged += row.damaged ?? 0;
+            tshirtMap[sz].missing += row.missing ?? 0;
+            tshirtMap[sz].reserved += row.reserved ?? 0;
+          }
+        }
       });
       setInventoryByItem(invMap);
+      setTshirtBySize(tshirtMap);
     } finally {
       setLoading(false);
     }
@@ -162,48 +191,115 @@ const DistributionStatus = () => {
     return counts;
   }, [distMap, inventoryByItem]);
 
+  // Per-size given counts for T-shirts
+  const tshirtGivenBySize = useMemo(() => {
+    const counts: Record<string, number> = {};
+    TSHIRT_SIZES.forEach(s => { counts[s] = 0; });
+    Object.values(distMap).forEach(items => {
+      const row = items["T_SHIRT"];
+      if (row?.status === "GIVEN" && row.size) {
+        const sz = row.size.toUpperCase();
+        if (TSHIRT_SIZES.includes(sz as any)) {
+          counts[sz] += row.quantity ?? 1;
+        }
+      }
+    });
+    return counts;
+  }, [distMap]);
+
   const getQtyForItem = (itemType: string) =>
     MULTI_QTY_ITEMS.has(itemType) ? DEFAULT_MULTI_QTY : 1;
 
-  const toggleStatus = async (studentId: string, itemType: string) => {
+  /**
+   * Toggle / set a status. For T-shirts, `size` is required when going to GIVEN.
+   */
+  const setItemStatus = async (
+    studentId: string,
+    itemType: string,
+    desired: "GIVEN" | "PENDING",
+    size?: string,
+  ) => {
     if (!isAdminOrOwner) return;
-    const current = distMap[studentId]?.[itemType]?.status;
-    const newStatus = current === "GIVEN" ? "PENDING" : "GIVEN";
     const qty = getQtyForItem(itemType);
+    const isSized = SIZED_ITEMS.has(itemType);
+    const prev = distMap[studentId]?.[itemType];
+    // For sized items, the actual stored item_type encodes size (e.g. T_SHIRT_L) so the trigger picks the right inventory row
+    const storedItemType = isSized && desired === "GIVEN" && size
+      ? `${itemType}_${size}`
+      : (isSized && prev?.size ? `${itemType}_${prev.size}` : itemType);
 
     try {
-      const { error } = await supabase.from("distribution_status" as any).upsert({
-        student_id: studentId,
-        item_type: itemType,
-        status: newStatus,
-        quantity: newStatus === "GIVEN" ? qty : 1,
-        given_date: newStatus === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
-        given_by: newStatus === "GIVEN" ? user?.id : null,
-        dataset: datasetSlug,
-      } as any, { onConflict: "student_id,item_type" });
-      if (error) throw error;
+      if (desired === "GIVEN") {
+        const { error } = await supabase.from("distribution_status" as any).upsert({
+          student_id: studentId,
+          item_type: storedItemType,
+          status: "GIVEN",
+          quantity: qty,
+          size: isSized ? (size || prev?.size || null) : null,
+          given_date: format(new Date(), "yyyy-MM-dd"),
+          given_by: user?.id,
+          dataset: datasetSlug,
+        } as any, { onConflict: "student_id,item_type" });
+        if (error) throw error;
+      } else {
+        // Setting back to PENDING — update existing row if any
+        const { error } = await supabase.from("distribution_status" as any).upsert({
+          student_id: studentId,
+          item_type: storedItemType,
+          status: "PENDING",
+          quantity: 1,
+          size: isSized ? (prev?.size || null) : null,
+          given_date: null,
+          given_by: null,
+          dataset: datasetSlug,
+        } as any, { onConflict: "student_id,item_type" });
+        if (error) throw error;
+      }
 
-      setDistMap(prev => ({
-        ...prev,
+      setDistMap(p => ({
+        ...p,
         [studentId]: {
-          ...prev[studentId],
+          ...p[studentId],
           [itemType]: {
-            student_id: studentId, item_type: itemType, status: newStatus,
-            quantity: newStatus === "GIVEN" ? qty : 1,
-            given_date: newStatus === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
+            student_id: studentId,
+            item_type: itemType,
+            status: desired,
+            quantity: desired === "GIVEN" ? qty : 1,
+            size: isSized ? (size || prev?.size || null) : null,
+            given_date: desired === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
           },
         },
       }));
-      // Re-pull inventory to reflect trigger-driven decrement
       void fetchData();
-    } catch {
+    } catch (err: any) {
+      console.error(err);
       toast.error("Failed to update");
+    }
+  };
+
+  const handleCellClick = (studentId: string, itemType: string) => {
+    if (!isAdminOrOwner) return;
+    const current = distMap[studentId]?.[itemType];
+    const isSized = SIZED_ITEMS.has(itemType);
+    if (isSized) {
+      if (current?.status === "GIVEN") {
+        // Toggle back to PENDING
+        void setItemStatus(studentId, itemType, "PENDING");
+      } else {
+        // Open size picker
+        setOpenSizePicker(`${studentId}:${itemType}`);
+      }
+    } else {
+      void setItemStatus(studentId, itemType, current?.status === "GIVEN" ? "PENDING" : "GIVEN");
     }
   };
 
   const downloadTemplate = () => {
     const header = ["user_id_vedantu", "roll_no", ...ITEM_TYPES.map(t => t)].join(",");
-    const sampleRow = ["VED-001", "ROLL001", ...ITEM_TYPES.map(t => MULTI_QTY_ITEMS.has(t) ? "GIVEN:2" : "GIVEN")].join(",");
+    const sampleRow = ["VED-001", "ROLL001", ...ITEM_TYPES.map(t => {
+      if (t === "T_SHIRT") return "GIVEN:2:M";
+      return MULTI_QTY_ITEMS.has(t) ? "GIVEN:2" : "GIVEN";
+    })].join(",");
     const csv = `${header}\n${sampleRow}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -230,20 +326,25 @@ const DistributionStatus = () => {
         if (!matched) { skippedReasons.push(`Row ${i + 1}: no student match`); continue; }
 
         headers.forEach((h, idx) => {
-          const itemType = canonicalItem(h);
-          if (!ITEM_TYPES.includes(itemType as any)) return;
+          const baseItem = baseCanonical(h);
+          if (!ITEM_TYPES.includes(baseItem as any)) return;
           const raw = (cols[idx] || "").toUpperCase();
           if (!raw) return;
-          // Accept "GIVEN", "GIVEN:2", "GIVEN(2)", "PENDING"
-          const m = raw.match(/^(GIVEN|PENDING)(?:[:\s(]+(\d+)\)?)?$/);
+          // Accept "GIVEN", "GIVEN:2", "GIVEN:2:M", "GIVEN(2)", "PENDING"
+          const m = raw.match(/^(GIVEN|PENDING)(?:[:\s(]+(\d+)\)?)?(?::([A-Z]+))?$/);
           if (!m) return;
           const status = m[1];
-          const qty = m[2] ? parseInt(m[2], 10) : getQtyForItem(itemType);
+          const qty = m[2] ? parseInt(m[2], 10) : getQtyForItem(baseItem);
+          const size = m[3] && TSHIRT_SIZES.includes(m[3] as any) ? m[3] : undefined;
+          const isSized = SIZED_ITEMS.has(baseItem);
+          const storedItemType = isSized && size ? `${baseItem}_${size}` : baseItem;
+
           upserts.push({
             student_id: matched.id,
-            item_type: itemType,
+            item_type: storedItemType,
             status,
             quantity: status === "GIVEN" ? qty : 1,
+            size: isSized && size ? size : null,
             given_date: status === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
             given_by: status === "GIVEN" ? user?.id : null,
             dataset: datasetSlug,
@@ -290,7 +391,7 @@ const DistributionStatus = () => {
         </div>
       </div>
 
-      {/* Summary Cards — Given / Current Stock with Stock Left */}
+      {/* Summary Cards */}
       <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground font-semibold uppercase">TOTAL STUDENTS</p>
@@ -300,7 +401,6 @@ const DistributionStatus = () => {
           const inv = inventoryByItem[t];
           const currentStock = inv?.current_stock ?? 0;
           const given = summaries[t]?.given ?? 0;
-          // Stock left = current_stock (already decremented by trigger when items are given)
           const stockLeft = currentStock;
           return (
             <div key={t} className="rounded-xl border border-border bg-card p-4">
@@ -318,6 +418,32 @@ const DistributionStatus = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* T-Shirt size breakdown */}
+      <div className="mb-6 rounded-xl border border-border bg-card p-4">
+        <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">T-Shirt Sizes — Given / Stock</p>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          {TSHIRT_SIZES.map(sz => {
+            const inv = tshirtBySize[sz];
+            const stock = inv?.current_stock ?? 0;
+            const given = tshirtGivenBySize[sz] ?? 0;
+            return (
+              <div key={sz} className="rounded-lg border border-border bg-muted/30 p-2 text-center">
+                <p className="text-[11px] font-bold uppercase text-muted-foreground">{sz}</p>
+                <p className="text-sm font-bold leading-tight">
+                  <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
+                  <span className="text-muted-foreground"> / </span>
+                  <span className="text-foreground">{stock}</span>
+                </p>
+                <p className="text-[10px]">
+                  <span className="text-muted-foreground">left </span>
+                  <span className={stock > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stock}</span>
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filters */}
@@ -366,22 +492,60 @@ const DistributionStatus = () => {
                     const row = distMap[s.id]?.[t];
                     const status = row?.status || "PENDING";
                     const qty = row?.quantity ?? 1;
+                    const size = row?.size ?? null;
                     if (statusFilterType === "given" && status !== "GIVEN") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     if (statusFilterType === "pending" && status !== "PENDING") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     const showQty = status === "GIVEN" && (MULTI_QTY_ITEMS.has(t) || qty > 1);
+                    const isSized = SIZED_ITEMS.has(t);
+                    const pickerKey = `${s.id}:${t}`;
+                    const isPickerOpen = openSizePicker === pickerKey;
+                    const labelText = `${status}${showQty ? ` (${qty})` : ""}${isSized && status === "GIVEN" && size ? ` · ${size}` : ""}`;
+
+                    const pill = (
+                      <button
+                        onClick={() => handleCellClick(s.id, t)}
+                        disabled={!isAdminOrOwner}
+                        className={`rounded px-2.5 py-1 text-[10px] font-bold transition-colors ${
+                          status === "GIVEN"
+                            ? "bg-success text-success-foreground"
+                            : "bg-destructive text-destructive-foreground"
+                        } ${!isAdminOrOwner ? "cursor-default" : "hover:opacity-80"}`}
+                      >
+                        {labelText}
+                      </button>
+                    );
+
                     return (
                       <td key={t} className="px-3 py-2.5 text-center">
-                        <button
-                          onClick={() => toggleStatus(s.id, t)}
-                          disabled={!isAdminOrOwner}
-                          className={`rounded px-2.5 py-1 text-[10px] font-bold transition-colors ${
-                            status === "GIVEN"
-                              ? "bg-success text-success-foreground"
-                              : "bg-destructive text-destructive-foreground"
-                          } ${!isAdminOrOwner ? "cursor-default" : "hover:opacity-80"}`}
-                        >
-                          {status}{showQty ? ` (${qty})` : ""}
-                        </button>
+                        {isSized ? (
+                          <Popover open={isPickerOpen} onOpenChange={(o) => setOpenSizePicker(o ? pickerKey : null)}>
+                            <PopoverTrigger asChild>{pill}</PopoverTrigger>
+                            <PopoverContent className="w-auto p-2" align="center">
+                              <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">Select T-shirt size</p>
+                              <div className="grid grid-cols-3 gap-1">
+                                {TSHIRT_SIZES.map(sz => {
+                                  const stockLeft = tshirtBySize[sz]?.current_stock ?? 0;
+                                  return (
+                                    <Button
+                                      key={sz}
+                                      size="sm"
+                                      variant={size === sz ? "default" : "outline"}
+                                      disabled={stockLeft <= 0}
+                                      onClick={() => {
+                                        setOpenSizePicker(null);
+                                        void setItemStatus(s.id, t, "GIVEN", sz);
+                                      }}
+                                      className="h-8 text-xs"
+                                    >
+                                      {sz}
+                                      <span className="ml-1 text-[9px] text-muted-foreground">({stockLeft})</span>
+                                    </Button>
+                                  );
+                                })}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ) : pill}
                       </td>
                     );
                   })}
@@ -403,7 +567,7 @@ const DistributionStatus = () => {
         helpText={
           <>
             <p><strong>Columns:</strong> user_id_vedantu (preferred) or roll_no, then item types (BAG, CLICKER, T_SHIRT, …)</p>
-            <p><strong>Values:</strong> <code>GIVEN</code>, <code>PENDING</code>, or <code>GIVEN:2</code> for multi-quantity (e.g. 2 T-shirts).</p>
+            <p><strong>Values:</strong> <code>GIVEN</code>, <code>PENDING</code>, <code>GIVEN:2</code> for multi-qty, or <code>GIVEN:2:M</code> for T-shirts (size XS/S/M/L/XL/XXL).</p>
             <p>Students are matched by user_id_vedantu first, then roll_no.</p>
           </>
         }
