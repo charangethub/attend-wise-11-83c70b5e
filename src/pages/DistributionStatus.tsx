@@ -290,24 +290,30 @@ const DistributionStatus = () => {
         </div>
       </div>
 
-      {/* Summary Cards — Given / Available stock */}
+      {/* Summary Cards — Given / Current Stock with Stock Left */}
       <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground font-semibold uppercase">TOTAL STUDENTS</p>
           <p className="text-2xl font-bold text-foreground">{students.length}</p>
         </div>
         {ITEM_TYPES.map(t => {
-          const s = summaries[t] ?? { given: 0, available: 0 };
-          const remaining = s.available;
+          const inv = inventoryByItem[t];
+          const currentStock = inv?.current_stock ?? 0;
+          const given = summaries[t]?.given ?? 0;
+          // Stock left = current_stock (already decremented by trigger when items are given)
+          const stockLeft = currentStock;
           return (
             <div key={t} className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
-              <p className="text-lg font-bold">
-                <span className={s.given > 0 ? "text-success" : "text-muted-foreground"}>{s.given}</span>
-                <span className="text-muted-foreground text-sm"> given</span>
+              <p className="text-lg font-bold leading-tight">
+                <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
+                <span className="text-muted-foreground"> / </span>
+                <span className="text-foreground">{currentStock}</span>
               </p>
-              <p className="text-[11px] text-muted-foreground">
-                Stock left: <span className={remaining > 0 ? "text-success font-semibold" : "text-destructive font-semibold"}>{remaining}</span>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">given / stock</p>
+              <p className="mt-1 text-[11px]">
+                <span className="text-muted-foreground">Stock left: </span>
+                <span className={stockLeft > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stockLeft}</span>
               </p>
             </div>
           );
