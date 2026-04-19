@@ -214,7 +214,7 @@ const AttendanceRecords = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h2><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
         <div className="flex gap-2">
@@ -240,38 +240,39 @@ const AttendanceRecords = () => {
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
         <TooltipProvider>
-          <div className="rounded-lg border border-border overflow-auto">
-            <table className="text-xs w-max min-w-full">
-              <thead className="sticky top-0 z-20">
-                <tr className="bg-muted/80 backdrop-blur">
-                  <th className="sticky left-0 z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[80px]">Roll No</th>
-                  {isOwner && <th className="px-2 py-2 text-left font-semibold min-w-[90px]">User ID</th>}
-                  <th className="sticky left-[80px] z-30 bg-muted/90 px-2 py-2 text-left font-semibold min-w-[130px]">Name</th>
-                  <th className="px-2 py-2 text-left font-semibold min-w-[60px]">Curriculum</th>
-                  <th className="px-2 py-2 text-center font-semibold min-w-[40px]">Grade</th>
-                  <th className="px-2 py-2 text-left font-semibold min-w-[140px]">Classroom</th>
-                  <th className="px-2 py-2 text-center font-semibold min-w-[70px]">Status</th>
-                  {Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="px-1.5 py-2 text-center font-semibold min-w-[32px]">{String(i + 1).padStart(2, "0")}</th>)}
+          <div className="rounded-lg border border-border overflow-auto max-h-[calc(100vh-280px)] relative">
+            <table className="text-xs border-separate border-spacing-0 w-max min-w-full">
+              <thead>
+                <tr>
+                  <th className="sticky top-0 left-0 z-40 bg-muted px-2 py-2 text-left font-semibold min-w-[80px] border-b border-border">Roll No</th>
+                  {isOwner && <th className="sticky top-0 z-40 bg-muted px-2 py-2 text-left font-semibold min-w-[90px] border-b border-border" style={{ left: 80 }}>User ID</th>}
+                  <th className="sticky top-0 z-40 bg-muted px-2 py-2 text-left font-semibold min-w-[140px] border-b border-border" style={{ left: isOwner ? 170 : 80 }}>Name</th>
+                  <th className="sticky top-0 z-40 bg-muted px-2 py-2 text-left font-semibold min-w-[80px] border-b border-border" style={{ left: isOwner ? 310 : 220 }}>Curriculum</th>
+                  <th className="sticky top-0 z-40 bg-muted px-2 py-2 text-center font-semibold min-w-[55px] border-b border-border shadow-[2px_0_4px_-1px_hsl(var(--border))]" style={{ left: isOwner ? 390 : 300 }}>Grade</th>
+                  <th className="sticky top-0 z-30 bg-muted px-2 py-2 text-left font-semibold min-w-[140px] border-b border-border">Classroom</th>
+                  <th className="sticky top-0 z-30 bg-muted px-2 py-2 text-center font-semibold min-w-[80px] border-b border-border">Status</th>
+                  {Array.from({ length: daysInMonth }, (_, i) => <th key={i} className="sticky top-0 z-30 bg-muted px-1.5 py-2 text-center font-semibold min-w-[36px] border-b border-border">{String(i + 1).padStart(2, "0")}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {filteredStudents.map((s: any, idx: number) => {
                   const days = attMap[s.id] || {};
+                  const rowBg = idx % 2 === 0 ? "bg-card" : "bg-muted/40";
                   return (
-                    <tr key={s.id} className={`border-t border-border ${idx % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
-                      <td className="sticky left-0 z-10 bg-inherit px-2 py-1.5 font-medium">{s.roll_no}</td>
-                      {isOwner && <td className="px-2 py-1.5 text-muted-foreground text-[10px] font-mono truncate max-w-[90px]" title={s.user_id_vedantu}>{s.user_id_vedantu || "—"}</td>}
-                      <td className="sticky left-[80px] z-10 bg-inherit px-2 py-1.5 truncate max-w-[130px]">{s.student_name}</td>
-                      <td className="px-2 py-1.5 text-muted-foreground">{s.curriculum}</td>
-                      <td className="px-2 py-1.5 text-center text-muted-foreground">{s.grade}</td>
-                      <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px]">{s.classroom_name}</td>
-                      <td className="px-2 py-1.5 text-center"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
+                    <tr key={s.id}>
+                      <td className={`sticky left-0 z-20 ${rowBg} px-2 py-1.5 font-medium border-b border-border`}>{s.roll_no}</td>
+                      {isOwner && <td className={`sticky z-20 ${rowBg} px-2 py-1.5 text-muted-foreground text-[10px] font-mono truncate max-w-[90px] border-b border-border`} style={{ left: 80 }} title={s.user_id_vedantu}>{s.user_id_vedantu || "—"}</td>}
+                      <td className={`sticky z-20 ${rowBg} px-2 py-1.5 truncate max-w-[140px] border-b border-border`} style={{ left: isOwner ? 170 : 80 }}>{s.student_name}</td>
+                      <td className={`sticky z-20 ${rowBg} px-2 py-1.5 text-muted-foreground border-b border-border`} style={{ left: isOwner ? 310 : 220 }}>{s.curriculum}</td>
+                      <td className={`sticky z-20 ${rowBg} px-2 py-1.5 text-center text-muted-foreground border-b border-border shadow-[2px_0_4px_-1px_hsl(var(--border))]`} style={{ left: isOwner ? 390 : 300 }}>{s.grade}</td>
+                      <td className="px-2 py-1.5 text-muted-foreground truncate max-w-[140px] border-b border-border">{s.classroom_name}</td>
+                      <td className="px-2 py-1.5 text-center border-b border-border"><span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusBadgeColor(s.enrollment_status)}`}>{s.enrollment_status}</span></td>
                       {Array.from({ length: daysInMonth }, (_, i) => {
                         const d = days[i + 1];
                         const combined = d ? getCombinedStatus(d.AM, d.PM) : "";
                         const remarkText = getSessionRemarkTooltip(d?.amRemark, d?.pmRemark);
                         return (
-                          <td key={i} className={`px-1 py-1.5 text-center font-semibold ${combined ? getCombinedStatusColor(combined) : ""}`}>
+                          <td key={i} className={`px-1 py-1.5 text-center font-semibold border-b border-border ${combined ? getCombinedStatusColor(combined) : ""}`}>
                             {combined ? (
                               remarkText ? (
                                 <Tooltip>
