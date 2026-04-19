@@ -13,8 +13,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="h-14 flex items-center justify-between gap-3 border-b border-border bg-card px-4">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <header className="h-14 flex items-center justify-between gap-3 border-b border-border bg-card px-4 shrink-0">
             <div className="flex items-center gap-3">
               <SidebarTrigger />
               <div className="flex items-center gap-2">
@@ -26,7 +26,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
             </div>
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main className="flex-1 overflow-auto w-full">{children}</main>
         </div>
       </div>
     </SidebarProvider>
