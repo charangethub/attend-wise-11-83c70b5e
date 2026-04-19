@@ -139,7 +139,12 @@ Deno.serve(async (req) => {
 
     const resJson = await resendRes.json().catch(() => ({}));
     if (!resendRes.ok) {
-      return new Response(JSON.stringify({ error: resJson?.message || 'Resend send failed', detail: resJson }), {
+      const msg = resJson?.message || resJson?.error || 'Resend send failed';
+      // Friendlier message for the common test-domain restriction
+      const friendly = /testing emails to your own email address/i.test(msg)
+        ? `Resend is in test mode: it can only send to the account owner's email. Verify a domain at resend.com/domains and update the "from" address, or set up Lovable Emails for branded sending.`
+        : msg;
+      return new Response(JSON.stringify({ error: friendly, detail: resJson }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
