@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye, Upload, Mail } from "lucide-react";
+import { ArrowLeft, RefreshCw, Search, Package, BarChart3, Pencil, Save, Copy, Send, Plus, Eye, Upload, Mail, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
@@ -79,10 +79,11 @@ const Inventory = () => {
 
   const totalStock = items.reduce((s, i) => s + (i.current_stock ?? i.ytd_received ?? 0), 0);
   const totalDistributed = items.reduce((s, i) => s + (i.distributed ?? 0), 0);
-  const totalAvailable = items.reduce((s, i) => s + Math.max(0, (i.current_stock ?? 0) - (i.damaged ?? 0) - (i.missing ?? 0) - (i.reserved ?? 0)), 0);
+  // Available = YTD received - distributed - damaged - missing - reserved
+  const totalAvailable = items.reduce((s, i) => s + Math.max(0, (i.ytd_received ?? 0) - (i.distributed ?? 0) - (i.damaged ?? 0) - (i.missing ?? 0) - (i.reserved ?? 0)), 0);
   const totalDamaged = items.reduce((s, i) => s + (i.damaged ?? 0), 0);
   const criticalItems = items.filter(i => {
-    const avail = (i.current_stock ?? 0) - (i.damaged ?? 0) - (i.missing ?? 0) - (i.reserved ?? 0);
+    const avail = (i.ytd_received ?? 0) - (i.distributed ?? 0) - (i.damaged ?? 0) - (i.missing ?? 0) - (i.reserved ?? 0);
     return avail <= 0;
   }).length;
 
@@ -219,6 +220,11 @@ const Inventory = () => {
         const original = items.find(i => i.id === id);
         if (!original) continue;
         const updates: any = { updated_at: new Date().toISOString(), updated_by: user?.id };
+        if (dirty.item_name !== undefined) updates.item_name = dirty.item_name;
+        if (dirty.zone !== undefined) updates.zone = dirty.zone;
+        if (dirty.centre !== undefined) updates.centre = dirty.centre;
+        if (dirty.grade !== undefined) updates.grade = dirty.grade;
+        if (dirty.size !== undefined) updates.size = dirty.size;
         if (dirty.ytd_received !== undefined) updates.ytd_received = dirty.ytd_received;
         if (dirty.current_stock !== undefined) updates.current_stock = dirty.current_stock;
         if (dirty.damaged !== undefined) updates.damaged = dirty.damaged;
@@ -245,11 +251,12 @@ const Inventory = () => {
 
   const getAvailable = (item: InventoryItem) => {
     const dirty = dirtyRows[item.id];
-    const stock = dirty?.current_stock ?? item.current_stock ?? 0;
+    const ytd = dirty?.ytd_received ?? item.ytd_received ?? 0;
+    const dist = item.distributed ?? 0;
     const dmg = dirty?.damaged ?? item.damaged ?? 0;
     const miss = dirty?.missing ?? item.missing ?? 0;
     const res = dirty?.reserved ?? item.reserved ?? 0;
-    return Math.max(0, stock - dmg - miss - res);
+    return Math.max(0, ytd - dist - dmg - miss - res);
   };
 
   const reportText = useMemo(() => {
