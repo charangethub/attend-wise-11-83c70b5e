@@ -315,13 +315,12 @@ const Inventory = () => {
       </div>
 
       {/* Summary Cards */}
-      <div className="mb-6 grid grid-cols-2 sm:grid-cols-6 gap-3">
+      <div className="mb-6 grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: "TOTAL ITEMS", value: items.length, icon: BarChart3 },
-          { label: "CURRENT STOCK", value: totalStock },
+          { label: "YTD RECEIVED", value: items.reduce((s, i) => s + (i.ytd_received ?? 0), 0) },
           { label: "DISTRIBUTED", value: totalDistributed },
           { label: "AVAILABLE", value: totalAvailable, color: "text-green-500" },
-          { label: "DAMAGED", value: totalDamaged, color: totalDamaged > 0 ? "text-destructive" : undefined },
           { label: "CRITICAL ITEMS", value: criticalItems, color: criticalItems > 0 ? "text-destructive" : undefined },
         ].map(c => (
           <div key={c.label} className="rounded-xl border border-border bg-card p-4">
@@ -369,7 +368,6 @@ const Inventory = () => {
                     <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">GRADE</th>
                     <th className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">SIZE</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">YTD RECEIVED</th>
-                    <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">CURRENT STOCK</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">DISTRIBUTED</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">DAMAGED</th>
                     <th className="px-3 py-2.5 text-center font-semibold whitespace-nowrap">MISSING</th>
@@ -385,16 +383,23 @@ const Inventory = () => {
                     const dirty = dirtyRows[item.id];
                     return (
                       <tr key={item.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
-                        <td className="px-3 py-2.5 font-medium whitespace-nowrap">{item.item_name}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{item.zone || "—"}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{item.centre || "—"}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{item.grade || "—"}</td>
-                        <td className="px-3 py-2.5 text-muted-foreground">{item.size || "—"}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          {editMode ? <Input type="number" className="w-20 h-7 text-center mx-auto" value={dirty?.ytd_received ?? item.ytd_received ?? 0} onChange={e => handleFieldChange(item.id, "ytd_received", parseInt(e.target.value) || 0)} /> : (item.ytd_received ?? 0)}
+                        <td className="px-3 py-2.5 font-medium whitespace-nowrap">
+                          {editMode ? <Input className="w-32 h-7" value={(dirty?.item_name ?? item.item_name) || ""} onChange={e => handleFieldChange(item.id, "item_name", e.target.value)} /> : item.item_name}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {editMode ? <Input className="w-24 h-7" value={(dirty?.zone ?? item.zone) || ""} onChange={e => handleFieldChange(item.id, "zone", e.target.value)} /> : (item.zone || "—")}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {editMode ? <Input className="w-28 h-7" value={(dirty?.centre ?? item.centre) || ""} onChange={e => handleFieldChange(item.id, "centre", e.target.value)} /> : (item.centre || "—")}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {editMode ? <Input className="w-28 h-7" value={(dirty?.grade ?? item.grade) || ""} onChange={e => handleFieldChange(item.id, "grade", e.target.value)} /> : (item.grade || "—")}
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">
+                          {editMode ? <Input className="w-20 h-7" value={(dirty?.size ?? item.size) || ""} onChange={e => handleFieldChange(item.id, "size", e.target.value)} /> : (item.size || "—")}
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          {editMode ? <Input type="number" className="w-20 h-7 text-center mx-auto" value={dirty?.current_stock ?? item.current_stock ?? 0} onChange={e => handleFieldChange(item.id, "current_stock", parseInt(e.target.value) || 0)} /> : (item.current_stock ?? 0)}
+                          {editMode ? <Input type="number" className="w-20 h-7 text-center mx-auto" value={dirty?.ytd_received ?? item.ytd_received ?? 0} onChange={e => handleFieldChange(item.id, "ytd_received", parseInt(e.target.value) || 0)} /> : (item.ytd_received ?? 0)}
                         </td>
                         <td className="px-3 py-2.5 text-center font-medium">{item.distributed ?? 0}</td>
                         <td className="px-3 py-2.5 text-center">
@@ -413,12 +418,15 @@ const Inventory = () => {
                           </span>
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          <button onClick={() => setDetailItem(item)} className="rounded p-1 hover:bg-muted transition-colors"><Eye className="h-4 w-4 text-muted-foreground" /></button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button title="View details" onClick={() => setDetailItem(item)} className="rounded p-1 hover:bg-muted transition-colors"><Eye className="h-4 w-4 text-muted-foreground" /></button>
+                            {isOwner && <button title="Delete item" onClick={() => handleDeleteItem(item)} className="rounded p-1 hover:bg-destructive/10 transition-colors"><Trash2 className="h-4 w-4 text-destructive" /></button>}
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
-                  {filtered.length === 0 && <tr><td colSpan={14} className="px-4 py-12 text-center text-muted-foreground">No inventory items found</td></tr>}
+                  {filtered.length === 0 && <tr><td colSpan={13} className="px-4 py-12 text-center text-muted-foreground">No inventory items found</td></tr>}
                 </tbody>
               </table>
             </div>
