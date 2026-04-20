@@ -35,7 +35,7 @@ const Dashboard = () => {
   ].filter((app) => app.url);
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-foreground">
           {greeting()}, {displayName} 👋

@@ -36,7 +36,7 @@ const SIZED_ITEMS = new Set(["T_SHIRT"]);
 
 type Student = { id: string; roll_no: string; student_name: string; classroom_name: string; center: string; user_id_vedantu: string };
 type DistStatus = { student_id: string; item_type: string; status: string; given_date: string | null; quantity?: number; size?: string | null };
-type InventoryRow = { item_name: string; size?: string | null; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
+type InventoryRow = { item_name: string; size?: string | null; ytd_received: number; current_stock: number; distributed: number; damaged: number; missing: number; reserved: number };
 
 /** Normalise raw label into a canonical item key. Preserves T-shirt size when present. */
 const canonicalItem = (s: string) => {
@@ -127,7 +127,8 @@ const DistributionStatus = () => {
       (inv as any[])?.forEach((row: any) => {
         const key = normaliseItem(row.item_name || "");
         if (!key) return;
-        if (!invMap[key]) invMap[key] = { item_name: row.item_name, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+        if (!invMap[key]) invMap[key] = { item_name: row.item_name, ytd_received: 0, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+        invMap[key].ytd_received += row.ytd_received ?? 0;
         invMap[key].current_stock += row.current_stock ?? 0;
         invMap[key].distributed += row.distributed ?? 0;
         invMap[key].damaged += row.damaged ?? 0;
@@ -137,7 +138,8 @@ const DistributionStatus = () => {
         if (key === "T_SHIRT") {
           const sz = (row.size || "").trim().toUpperCase();
           if (sz && TSHIRT_SIZES.includes(sz as any)) {
-            if (!tshirtMap[sz]) tshirtMap[sz] = { item_name: row.item_name, size: sz, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+            if (!tshirtMap[sz]) tshirtMap[sz] = { item_name: row.item_name, size: sz, ytd_received: 0, current_stock: 0, distributed: 0, damaged: 0, missing: 0, reserved: 0 };
+            tshirtMap[sz].ytd_received += row.ytd_received ?? 0;
             tshirtMap[sz].current_stock += row.current_stock ?? 0;
             tshirtMap[sz].distributed += row.distributed ?? 0;
             tshirtMap[sz].damaged += row.damaged ?? 0;
@@ -173,13 +175,11 @@ const DistributionStatus = () => {
 
   // For each item type: how many UNITS distributed (sum of quantity over GIVEN rows)
   const summaries = useMemo(() => {
-    const counts: Record<string, { given: number; available: number }> = {};
+    const counts: Record<string, { given: number; ytd: number; available: number }> = {};
     ITEM_TYPES.forEach(t => {
       const inv = inventoryByItem[t];
-      const available = inv
-        ? Math.max(0, (inv.current_stock ?? 0) - (inv.damaged ?? 0) - (inv.missing ?? 0) - (inv.reserved ?? 0))
-        : 0;
-      counts[t] = { given: 0, available };
+      const ytd = inv?.ytd_received ?? 0;
+      counts[t] = { given: 0, ytd, available: ytd };
     });
     Object.values(distMap).forEach(items => {
       ITEM_TYPES.forEach(t => {
@@ -187,6 +187,10 @@ const DistributionStatus = () => {
           counts[t].given += items[t]?.quantity ?? 1;
         }
       });
+    });
+    // Available = YTD received - given
+    ITEM_TYPES.forEach(t => {
+      counts[t].available = Math.max(0, counts[t].ytd - counts[t].given);
     });
     return counts;
   }, [distMap, inventoryByItem]);
@@ -235,11 +239,11 @@ const DistributionStatus = () => {
           item_type: storedItemType,
           status: "GIVEN",
           quantity: qty,
-          size: isSized ? (size || prev?.size || null) : null,
+          size: isSized ? (size || prev?.size || "") : "",
           given_date: format(new Date(), "yyyy-MM-dd"),
           given_by: user?.id,
           dataset: datasetSlug,
-        } as any, { onConflict: "student_id,item_type" });
+        } as any, { onConflict: "student_id,item_type,size" });
         if (error) throw error;
       } else {
         // Setting back to PENDING — update existing row if any
@@ -248,11 +252,11 @@ const DistributionStatus = () => {
           item_type: storedItemType,
           status: "PENDING",
           quantity: 1,
-          size: isSized ? (prev?.size || null) : null,
+          size: isSized ? (prev?.size || "") : "",
           given_date: null,
           given_by: null,
           dataset: datasetSlug,
-        } as any, { onConflict: "student_id,item_type" });
+        } as any, { onConflict: "student_id,item_type,size" });
         if (error) throw error;
       }
 
@@ -272,8 +276,8 @@ const DistributionStatus = () => {
       }));
       void fetchData();
     } catch (err: any) {
-      console.error(err);
-      toast.error("Failed to update");
+      console.error("Distribution update failed:", err);
+      toast.error(`Failed to update: ${err?.message || err?.code || "unknown error"}`);
     }
   };
 
@@ -344,7 +348,7 @@ const DistributionStatus = () => {
             item_type: storedItemType,
             status,
             quantity: status === "GIVEN" ? qty : 1,
-            size: isSized && size ? size : null,
+            size: isSized && size ? size : "",
             given_date: status === "GIVEN" ? format(new Date(), "yyyy-MM-dd") : null,
             given_by: status === "GIVEN" ? user?.id : null,
             dataset: datasetSlug,
@@ -359,7 +363,7 @@ const DistributionStatus = () => {
       }
 
       for (let i = 0; i < upserts.length; i += 50) {
-        await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type" });
+        await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type,size" });
       }
 
       toast.success(`Uploaded ${upserts.length} records (${skippedReasons.length} skipped)`);
@@ -370,7 +374,7 @@ const DistributionStatus = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
@@ -398,22 +402,21 @@ const DistributionStatus = () => {
           <p className="text-2xl font-bold text-foreground">{students.length}</p>
         </div>
         {ITEM_TYPES.map(t => {
-          const inv = inventoryByItem[t];
-          const currentStock = inv?.current_stock ?? 0;
+          const ytd = summaries[t]?.ytd ?? 0;
           const given = summaries[t]?.given ?? 0;
-          const stockLeft = currentStock;
+          const available = summaries[t]?.available ?? 0;
           return (
             <div key={t} className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
               <p className="text-lg font-bold leading-tight">
                 <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
                 <span className="text-muted-foreground"> / </span>
-                <span className="text-foreground">{currentStock}</span>
+                <span className="text-foreground">{ytd}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">given / stock</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">given / ytd</p>
               <p className="mt-1 text-[11px]">
-                <span className="text-muted-foreground">Stock left: </span>
-                <span className={stockLeft > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stockLeft}</span>
+                <span className="text-muted-foreground">Available: </span>
+                <span className={available > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{available}</span>
               </p>
             </div>
           );
@@ -422,23 +425,24 @@ const DistributionStatus = () => {
 
       {/* T-Shirt size breakdown */}
       <div className="mb-6 rounded-xl border border-border bg-card p-4">
-        <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">T-Shirt Sizes — Given / Stock</p>
+        <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">T-Shirt Sizes — Given / YTD</p>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {TSHIRT_SIZES.map(sz => {
             const inv = tshirtBySize[sz];
-            const stock = inv?.current_stock ?? 0;
+            const ytd = inv?.ytd_received ?? 0;
             const given = tshirtGivenBySize[sz] ?? 0;
+            const available = Math.max(0, ytd - given);
             return (
               <div key={sz} className="rounded-lg border border-border bg-muted/30 p-2 text-center">
                 <p className="text-[11px] font-bold uppercase text-muted-foreground">{sz}</p>
                 <p className="text-sm font-bold leading-tight">
                   <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
                   <span className="text-muted-foreground"> / </span>
-                  <span className="text-foreground">{stock}</span>
+                  <span className="text-foreground">{ytd}</span>
                 </p>
                 <p className="text-[10px]">
-                  <span className="text-muted-foreground">left </span>
-                  <span className={stock > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stock}</span>
+                  <span className="text-muted-foreground">avail </span>
+                  <span className={available > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{available}</span>
                 </p>
               </div>
             );
@@ -524,13 +528,15 @@ const DistributionStatus = () => {
                               <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">Select T-shirt size</p>
                               <div className="grid grid-cols-3 gap-1">
                                 {TSHIRT_SIZES.map(sz => {
-                                  const stockLeft = tshirtBySize[sz]?.current_stock ?? 0;
+                                  const ytd = tshirtBySize[sz]?.ytd_received ?? 0;
+                                  const givenSz = tshirtGivenBySize[sz] ?? 0;
+                                  const availSz = Math.max(0, ytd - givenSz);
                                   return (
                                     <Button
                                       key={sz}
                                       size="sm"
                                       variant={size === sz ? "default" : "outline"}
-                                      disabled={stockLeft <= 0}
+                                      disabled={availSz <= 0}
                                       onClick={() => {
                                         setOpenSizePicker(null);
                                         void setItemStatus(s.id, t, "GIVEN", sz);
@@ -538,7 +544,7 @@ const DistributionStatus = () => {
                                       className="h-8 text-xs"
                                     >
                                       {sz}
-                                      <span className="ml-1 text-[9px] text-muted-foreground">({stockLeft})</span>
+                                      <span className="ml-1 text-[9px] text-muted-foreground">({availSz})</span>
                                     </Button>
                                   );
                                 })}

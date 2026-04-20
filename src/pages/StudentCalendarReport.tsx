@@ -136,7 +136,7 @@ const StudentCalendarReport = () => {
   if (loading) return <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary" /> Student Attendance Calendar</h2>
         <p className="text-sm text-muted-foreground">Select a student to view their monthly calendar attendance report</p>
