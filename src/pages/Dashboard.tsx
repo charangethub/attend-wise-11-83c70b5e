@@ -80,9 +80,7 @@ const Dashboard = () => {
         <DashboardAnalytics />
       </Suspense>
       <div className="mt-8 border-t border-border pt-8">
-        <Suspense fallback={<SectionLoader />}>
-          <MonthlyAnalytics />
-        </Suspense>
+        <MonthlyAnalytics />
       </div>
     </div>
   );
