@@ -4,9 +4,9 @@ import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowUpRight, Clock } from "lucide-react";
 import { format } from "date-fns";
+import MonthlyAnalytics from "@/components/MonthlyAnalytics";
 
 const DashboardAnalytics = lazy(() => import("@/components/DashboardAnalytics"));
-const MonthlyAnalytics = lazy(() => import("@/components/MonthlyAnalytics"));
 
 const SectionLoader = () => (
   <div className="flex justify-center py-12">
@@ -80,9 +80,7 @@ const Dashboard = () => {
         <DashboardAnalytics />
       </Suspense>
       <div className="mt-8 border-t border-border pt-8">
-        <Suspense fallback={<SectionLoader />}>
-          <MonthlyAnalytics />
-        </Suspense>
+        <MonthlyAnalytics />
       </div>
     </div>
   );
