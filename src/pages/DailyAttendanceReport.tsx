@@ -15,7 +15,15 @@ const DailyAttendanceReport = () => {
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+  const [selectedBatches, setSelectedBatches] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem("dailyReport.selectedBatches");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("dailyReport.selectedBatches", JSON.stringify(selectedBatches)); } catch {}
+  }, [selectedBatches]);
   const [filterOpen, setFilterOpen] = useState(false);
   const { data: settings } = useSystemSettings();
   const { datasetSlug: activeSlug } = usePageDataset("Daily Report");
@@ -103,7 +111,7 @@ const DailyAttendanceReport = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-2xl font-bold text-foreground flex items-center gap-2"><CalendarDays className="h-6 w-6 text-primary" /> Daily Attendance Report</h2>
         <div className="flex items-center gap-2">
