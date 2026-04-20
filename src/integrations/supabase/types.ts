@@ -191,7 +191,7 @@ export type Database = {
           id: string
           item_type: string
           quantity: number
-          size: string | null
+          size: string
           status: string
           student_id: string
         }
@@ -203,7 +203,7 @@ export type Database = {
           id?: string
           item_type: string
           quantity?: number
-          size?: string | null
+          size?: string
           status?: string
           student_id: string
         }
@@ -215,7 +215,7 @@ export type Database = {
           id?: string
           item_type?: string
           quantity?: number
-          size?: string | null
+          size?: string
           status?: string
           student_id?: string
         }
