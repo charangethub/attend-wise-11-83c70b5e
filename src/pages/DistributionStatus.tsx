@@ -374,7 +374,7 @@ const DistributionStatus = () => {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
@@ -402,22 +402,21 @@ const DistributionStatus = () => {
           <p className="text-2xl font-bold text-foreground">{students.length}</p>
         </div>
         {ITEM_TYPES.map(t => {
-          const inv = inventoryByItem[t];
-          const currentStock = inv?.current_stock ?? 0;
+          const ytd = summaries[t]?.ytd ?? 0;
           const given = summaries[t]?.given ?? 0;
-          const stockLeft = currentStock;
+          const available = summaries[t]?.available ?? 0;
           return (
             <div key={t} className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs text-muted-foreground font-semibold uppercase">{ITEM_LABELS[t]}</p>
               <p className="text-lg font-bold leading-tight">
                 <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
                 <span className="text-muted-foreground"> / </span>
-                <span className="text-foreground">{currentStock}</span>
+                <span className="text-foreground">{ytd}</span>
               </p>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">given / stock</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">given / ytd</p>
               <p className="mt-1 text-[11px]">
-                <span className="text-muted-foreground">Stock left: </span>
-                <span className={stockLeft > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stockLeft}</span>
+                <span className="text-muted-foreground">Available: </span>
+                <span className={available > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{available}</span>
               </p>
             </div>
           );
@@ -426,23 +425,24 @@ const DistributionStatus = () => {
 
       {/* T-Shirt size breakdown */}
       <div className="mb-6 rounded-xl border border-border bg-card p-4">
-        <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">T-Shirt Sizes — Given / Stock</p>
+        <p className="mb-3 text-xs font-semibold uppercase text-muted-foreground">T-Shirt Sizes — Given / YTD</p>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
           {TSHIRT_SIZES.map(sz => {
             const inv = tshirtBySize[sz];
-            const stock = inv?.current_stock ?? 0;
+            const ytd = inv?.ytd_received ?? 0;
             const given = tshirtGivenBySize[sz] ?? 0;
+            const available = Math.max(0, ytd - given);
             return (
               <div key={sz} className="rounded-lg border border-border bg-muted/30 p-2 text-center">
                 <p className="text-[11px] font-bold uppercase text-muted-foreground">{sz}</p>
                 <p className="text-sm font-bold leading-tight">
                   <span className={given > 0 ? "text-success" : "text-muted-foreground"}>{given}</span>
                   <span className="text-muted-foreground"> / </span>
-                  <span className="text-foreground">{stock}</span>
+                  <span className="text-foreground">{ytd}</span>
                 </p>
                 <p className="text-[10px]">
-                  <span className="text-muted-foreground">left </span>
-                  <span className={stock > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{stock}</span>
+                  <span className="text-muted-foreground">avail </span>
+                  <span className={available > 0 ? "text-success font-bold" : "text-destructive font-bold"}>{available}</span>
                 </p>
               </div>
             );
@@ -528,13 +528,15 @@ const DistributionStatus = () => {
                               <p className="mb-2 px-1 text-xs font-semibold text-muted-foreground">Select T-shirt size</p>
                               <div className="grid grid-cols-3 gap-1">
                                 {TSHIRT_SIZES.map(sz => {
-                                  const stockLeft = tshirtBySize[sz]?.current_stock ?? 0;
+                                  const ytd = tshirtBySize[sz]?.ytd_received ?? 0;
+                                  const givenSz = tshirtGivenBySize[sz] ?? 0;
+                                  const availSz = Math.max(0, ytd - givenSz);
                                   return (
                                     <Button
                                       key={sz}
                                       size="sm"
                                       variant={size === sz ? "default" : "outline"}
-                                      disabled={stockLeft <= 0}
+                                      disabled={availSz <= 0}
                                       onClick={() => {
                                         setOpenSizePicker(null);
                                         void setItemStatus(s.id, t, "GIVEN", sz);
@@ -542,7 +544,7 @@ const DistributionStatus = () => {
                                       className="h-8 text-xs"
                                     >
                                       {sz}
-                                      <span className="ml-1 text-[9px] text-muted-foreground">({stockLeft})</span>
+                                      <span className="ml-1 text-[9px] text-muted-foreground">({availSz})</span>
                                     </Button>
                                   );
                                 })}
