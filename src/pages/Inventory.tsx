@@ -206,8 +206,30 @@ const Inventory = () => {
     setSendingEmail(false);
   };
 
-  const handleFieldChange = (id: string, field: string, value: number) => {
+  const handleFieldChange = (id: string, field: string, value: number | string) => {
     setDirtyRows(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
+  };
+
+  const handleDeleteItem = async (item: InventoryItem) => {
+    if (!isOwner) { toast.error("Only owners can delete inventory items"); return; }
+    if (!window.confirm(`Delete "${item.item_name}"${item.grade ? ` (${item.grade})` : ""}? This cannot be undone.`)) return;
+    try {
+      const { error } = await supabase.from("inventory_items").delete().eq("id", item.id);
+      if (error) throw error;
+      await supabase.from("inventory_activity_logs").insert({
+        action: "stock_deleted",
+        item_id: item.id,
+        item_name: item.item_name,
+        quantity_change: -(item.current_stock ?? 0),
+        changed_by: user?.id,
+        notes: `Deleted item "${item.item_name}"`,
+      } as any);
+      toast.success(`Deleted "${item.item_name}"`);
+      fetchData();
+      fetchLogs();
+    } catch (err: any) {
+      toast.error("Delete failed: " + err.message);
+    }
   };
 
   const handleSaveAll = async () => {
@@ -279,7 +301,7 @@ const Inventory = () => {
   }, [items, totalStock, totalAvailable]);
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
