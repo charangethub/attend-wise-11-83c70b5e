@@ -119,7 +119,8 @@ const AbsenteeDashboard = () => {
             .from("call_logs" as any)
             .select("student_id, call_status, absence_reason, comment, expected_return_date, absent_date")
             .in("student_id", chunk)
-            .gte("expected_return_date", selectedDate)
+            .gt("expected_return_date", selectedDate)
+            .lt("absent_date", selectedDate)
             .order("absent_date", { ascending: false })
             .limit(chunk.length * 3);
 
