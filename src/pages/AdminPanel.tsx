@@ -396,10 +396,16 @@ const AdminPanel = () => {
               </div>
             ))}
             {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
-            <Button onClick={handlePushSync} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
-              {syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
-              Push Today's Attendance to All Active Targets
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+                {syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
+                Push Today's Attendance (fast)
+              </Button>
+              <Button onClick={() => handlePushSync("full")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+                <ArrowUpToLine className="h-4 w-4" />
+                Push Full (incl. Master Student List)
+              </Button>
+            </div>
           </div>
         </div>
       )}
