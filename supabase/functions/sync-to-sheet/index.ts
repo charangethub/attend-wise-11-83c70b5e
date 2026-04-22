@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const body = await req.json().catch(() => ({}));
-    const { date } = body;
+    const { date, only } = body as { date?: string; only?: string[] };
     if (!date)
       return new Response(JSON.stringify({ error: 'date required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const actions = [
+    const allActions = [
       { action: 'sync_master', students: studentsData ?? [] },
       { action: 'sync_attendance', date, records: filteredAttData },
       { action: 'sync_absentees', date, absentees },
@@ -96,6 +96,10 @@ Deno.serve(async (req) => {
         absent_count: absentees.length, absent: absentees.length,
       },
     ];
+    // If `only` is provided, restrict to those actions for fast partial syncs.
+    const actions = Array.isArray(only) && only.length > 0
+      ? allActions.filter(a => only.includes(a.action))
+      : allActions.filter(a => a.action !== 'sync_master'); // default: skip heavy master push
 
     // Push to ALL active sync targets
     const targetResults = await Promise.all(
