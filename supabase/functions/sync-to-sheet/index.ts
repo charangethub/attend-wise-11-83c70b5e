@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const body = await req.json().catch(() => ({}));
-    const { date } = body;
+    const { date, only } = body as { date?: string; only?: string[] };
     if (!date)
       return new Response(JSON.stringify({ error: 'date required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const actions = [
+    const allActions = [
       { action: 'sync_master', students: studentsData ?? [] },
       { action: 'sync_attendance', date, records: filteredAttData },
       { action: 'sync_absentees', date, absentees },
@@ -96,15 +96,21 @@ Deno.serve(async (req) => {
         absent_count: absentees.length, absent: absentees.length,
       },
     ];
+    // If `only` is provided, restrict to those actions for fast partial syncs.
+    const actions = Array.isArray(only) && only.length > 0
+      ? allActions.filter(a => only.includes(a.action))
+      : allActions.filter(a => a.action !== 'sync_master'); // default: skip heavy master push
 
     // Push to ALL active sync targets
     const targetResults = await Promise.all(
       allTargets.map(async (target) => {
-        // Run all actions in parallel per target to stay within edge function time budget
-        const perActionResults = await Promise.all(actions.map(async (payload) => {
+        // Run actions SEQUENTIALLY per target — Apps Script serializes requests per deployment,
+        // so parallel POSTs just queue up and time out. Sequential is actually faster.
+        const perActionResults: { action: string; success: boolean; error?: string }[] = [];
+        for (const payload of actions) {
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 25000);
+            const timeout = setTimeout(() => controller.abort(), 45000);
             const res = await fetch(target.apps_script_url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -121,22 +127,22 @@ Deno.serve(async (req) => {
                 ? 'Apps Script URL invalid or not deployed (Page Not Found). Re-deploy as Web app, set Execute as: Me, Who has access: Anyone, then paste the new /exec URL.'
                 : isHtml ? 'Got HTML response (likely login/permission page). Re-deploy Apps Script with access "Anyone".'
                 : `HTTP ${res.status}`;
-              return { action: payload.action, success: false, error: hint };
-            }
-            if (isHtml) {
-              return { action: payload.action, success: false, error: 'Apps Script returned HTML instead of JSON. Check deployment access permissions.' };
-            }
-            try {
-              const json = JSON.parse(text);
-              return { action: payload.action, success: json.success !== false, error: json.error };
-            } catch {
-              return { action: payload.action, success: true };
+              perActionResults.push({ action: payload.action, success: false, error: hint });
+            } else if (isHtml) {
+              perActionResults.push({ action: payload.action, success: false, error: 'Apps Script returned HTML instead of JSON. Check deployment access permissions.' });
+            } else {
+              try {
+                const json = JSON.parse(text);
+                perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
+              } catch {
+                perActionResults.push({ action: payload.action, success: true });
+              }
             }
           } catch (e: any) {
             const msg = e?.message ?? String(e);
-            return { action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (25s) — Apps Script took too long' : msg };
+            perActionResults.push({ action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (45s) — Apps Script took too long' : msg });
           }
-        }));
+        }
         const failures = perActionResults.filter(r => !r.success);
         return {
           label: target.label,
