@@ -153,6 +153,7 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({ success: true, synced, total: students.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
-    return new Response(JSON.stringify({ success: false, error: `Internal error: ${error instanceof Error ? error.message : String(error)}` }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    console.error('[sync-google-sheet] internal error:', error);
+    return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
