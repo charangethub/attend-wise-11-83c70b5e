@@ -97,37 +97,39 @@ Deno.serve(async (req) => {
       },
     ];
 
-    // Push to ALL active sync targets
+    // Push to ALL active sync targets — actions run in PARALLEL per target.
+    // The Apps Script side uses LockService to serialize concurrent doPost calls,
+    // so this is safe and turns wall-time from sum(actions) into max(actions).
+    const runOne = async (url: string, payload: any) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 25000);
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+          redirect: 'follow',
+        });
+        clearTimeout(timeout);
+        const text = await res.text();
+        const isHtml = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
+        if (!res.ok || isHtml) return { action: payload.action, success: false, error: `HTTP ${res.status}` };
+        try {
+          const json = JSON.parse(text);
+          return { action: payload.action, success: json.success !== false, error: json.error };
+        } catch {
+          return { action: payload.action, success: true };
+        }
+      } catch (e: any) {
+        clearTimeout(timeout);
+        return { action: payload.action, success: false, error: e?.message?.includes('abort') ? 'Timeout (25s)' : (e?.message ?? String(e)) };
+      }
+    };
+
     const targetResults = await Promise.all(
       allTargets.map(async (target) => {
-        const perActionResults: { action: string; success: boolean; error?: string }[] = [];
-        for (const payload of actions) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
-            const res = await fetch(target.apps_script_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            const text = await res.text();
-            const isHtml = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
-            if (!res.ok || isHtml) {
-              perActionResults.push({ action: payload.action, success: false, error: `HTTP ${res.status}` });
-            } else {
-              try {
-                const json = JSON.parse(text);
-                perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
-              } catch {
-                perActionResults.push({ action: payload.action, success: true });
-              }
-            }
-          } catch (e: any) {
-            perActionResults.push({ action: payload.action, success: false, error: e?.message?.includes('abort') ? 'Timeout (10s)' : (e?.message ?? String(e)) });
-          }
-        }
+        const perActionResults = await Promise.all(actions.map(p => runOne(target.apps_script_url, p)));
         const failures = perActionResults.filter(r => !r.success);
         return {
           label: target.label,
