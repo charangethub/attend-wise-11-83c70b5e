@@ -184,11 +184,14 @@ const AdminPanel = () => {
   const saveSettings = async () => { setSavingSettings(true); try { for (const [key, value] of Object.entries(settings)) { await supabase.from("system_settings").upsert({ key, value, updated_at: new Date().toISOString() } as any, { onConflict: "key" }); } toast.success("Settings saved!"); await queryClient.invalidateQueries({ queryKey: ["system-settings"] }); } catch { toast.error("Failed to save"); } setSavingSettings(false); };
 
   // Sync targets
-  const handlePushSync = async () => {
+  const handlePushSync = async (mode: "full" | "attendance" = "attendance") => {
     setSyncingPush(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body: { date: today } });
+      const body: any = { date: today };
+      if (mode === "full") body.only = ["sync_master", "sync_attendance", "sync_absentees", "sync_analytics"];
+      // attendance mode uses default (skips sync_master) for speed
+      const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body });
       if (error) throw error;
       if (data?.success) {
         const results = data.results ?? [];
