@@ -46,6 +46,16 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
+
+    // Authorization: only active owner/admin/teacher can request inventory reports
+    const { data: roleRow } = await admin.from('user_roles').select('role').eq('user_id', user.id).maybeSingle();
+    const { data: statusRow } = await admin.from('user_status').select('status').eq('user_id', user.id).maybeSingle();
+    if (!roleRow || !['owner', 'admin', 'teacher'].includes((roleRow as any).role) || (statusRow as any)?.status !== 'active') {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { data: items, error: invErr } = await admin
       .from('inventory_items')
       .select('item_name, zone, centre, grade, size, ytd_received, current_stock, distributed, damaged, missing, reserved')
@@ -145,8 +155,9 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ success: true, status: 'sent', sentTo: recipientEmail, items: rows.length }), {
       status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err?.message || String(err) }), {
+  } catch (err: unknown) {
+    console.error('[send-inventory-report] internal error:', err);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
