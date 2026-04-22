@@ -378,11 +378,11 @@ const AdminPanel = () => {
                     onClick={async () => {
                       setTestingTarget(t.id);
                       try {
-                        const { data } = await supabase.functions.invoke("sync-to-sheet", { body: { date: format(new Date(), "yyyy-MM-dd") } });
-                        const result = data?.results?.find((r: any) => r.label === t.label);
-                        if (result?.success) toast.success(`✅ ${t.label} is working`);
-                        else toast.error(`❌ ${t.label}: ${result?.error ?? "Failed"}`);
-                      } catch { toast.error("Test failed"); }
+                        const { data, error } = await supabase.functions.invoke("test-sync-target", { body: { url: t.apps_script_url } });
+                        if (error) { toast.error(`❌ ${t.label}: ${error.message}`); }
+                        else if (data?.success) toast.success(`✅ ${t.label} is working (${data.elapsed_ms}ms)`);
+                        else toast.error(`❌ ${t.label}: ${data?.error ?? "Failed"}`, { duration: 12000 });
+                      } catch (e: any) { toast.error("Test failed: " + (e?.message ?? "Unknown")); }
                       setTestingTarget(null);
                     }}>
                     {testingTarget === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Test
