@@ -100,34 +100,43 @@ Deno.serve(async (req) => {
     // Push to ALL active sync targets
     const targetResults = await Promise.all(
       allTargets.map(async (target) => {
-        const perActionResults: { action: string; success: boolean; error?: string }[] = [];
-        for (const payload of actions) {
+        // Run all actions in parallel per target to stay within edge function time budget
+        const perActionResults = await Promise.all(actions.map(async (payload) => {
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 10000);
+            const timeout = setTimeout(() => controller.abort(), 25000);
             const res = await fetch(target.apps_script_url, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
+              redirect: 'follow',
               signal: controller.signal,
             });
             clearTimeout(timeout);
             const text = await res.text();
-            const isHtml = text.trim().startsWith('<!DOCTYPE') || text.trim().startsWith('<html');
-            if (!res.ok || isHtml) {
-              perActionResults.push({ action: payload.action, success: false, error: `HTTP ${res.status}` });
-            } else {
-              try {
-                const json = JSON.parse(text);
-                perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
-              } catch {
-                perActionResults.push({ action: payload.action, success: true });
-              }
+            const trimmed = text.trim();
+            const isHtml = trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
+            if (!res.ok) {
+              const hint = isHtml && trimmed.includes('Page Not Found')
+                ? 'Apps Script URL invalid or not deployed (Page Not Found). Re-deploy as Web app, set Execute as: Me, Who has access: Anyone, then paste the new /exec URL.'
+                : isHtml ? 'Got HTML response (likely login/permission page). Re-deploy Apps Script with access "Anyone".'
+                : `HTTP ${res.status}`;
+              return { action: payload.action, success: false, error: hint };
+            }
+            if (isHtml) {
+              return { action: payload.action, success: false, error: 'Apps Script returned HTML instead of JSON. Check deployment access permissions.' };
+            }
+            try {
+              const json = JSON.parse(text);
+              return { action: payload.action, success: json.success !== false, error: json.error };
+            } catch {
+              return { action: payload.action, success: true };
             }
           } catch (e: any) {
-            perActionResults.push({ action: payload.action, success: false, error: e?.message?.includes('abort') ? 'Timeout (10s)' : (e?.message ?? String(e)) });
+            const msg = e?.message ?? String(e);
+            return { action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (25s) — Apps Script took too long' : msg };
           }
-        }
+        }));
         const failures = perActionResults.filter(r => !r.success);
         return {
           label: target.label,
