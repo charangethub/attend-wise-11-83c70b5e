@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { logActivity } from "@/hooks/useActivityLog";
+import { buildAbsenteeRemark, syncAbsenteeSheet } from "@/lib/absenteeSync";
 
 const CALL_STATUSES = ["Called", "Not Reachable", "Callback Scheduled"] as const;
 
@@ -111,14 +112,15 @@ const CallLogDialog = ({
 
       if (error) throw error;
 
-      // Also update attendance remark with the absence reason
-      const remarkText = [absenceReason, comment.trim()].filter(Boolean).join(" - ");
+      const remarkText = buildAbsenteeRemark(absenceReason, comment);
       await supabase
         .from("attendance")
         .update({ remark: remarkText })
         .eq("student_id", studentId)
         .eq("date", absentDate)
         .in("status", ["A", "AB", "L"]);
+
+      await syncAbsenteeSheet(absentDate);
 
       toast.success("Call log saved!");
 
