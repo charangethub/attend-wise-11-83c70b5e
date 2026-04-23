@@ -7,7 +7,7 @@ export function useAutoSync() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const intervalMinutes = parseInt(settings?.sync_interval_minutes ?? "0", 10);
+    const intervalMinutes = parseFloat(settings?.sync_interval_minutes ?? "0");
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (!intervalMinutes || intervalMinutes <= 0) return;
 
@@ -15,7 +15,9 @@ export function useAutoSync() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
-        await supabase.functions.invoke("sync-google-sheet", {
+        const today = new Date().toISOString().slice(0, 10);
+        await supabase.functions.invoke("sync-to-sheet", {
+          body: { date: today },
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
       } catch (e) { console.warn("Auto-sync failed:", e); }
