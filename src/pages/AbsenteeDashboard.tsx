@@ -14,6 +14,7 @@ import CallHistoryDialog from "@/components/CallHistoryDialog";
 import { logActivity } from "@/hooks/useActivityLog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
+import { buildAbsenteeRemark, syncAbsenteeSheet } from "@/lib/absenteeSync";
 
 const AbsenteeDashboard = () => {
   const { user, userRole } = useAuth();
@@ -147,6 +148,19 @@ const AbsenteeDashboard = () => {
           .upsert(toUpsert as any[], { onConflict: "student_id,absent_date" });
 
         if (!error) {
+          await Promise.all(
+            toUpsert.map((row) =>
+              supabase
+                .from("attendance")
+                .update({ remark: buildAbsenteeRemark(row.absence_reason, row.comment) })
+                .eq("student_id", row.student_id)
+                .eq("date", selectedDate)
+                .in("status", ["A", "AB", "L"]),
+            ),
+          );
+
+          await syncAbsenteeSheet(selectedDate);
+
           const newMap = { ...callLogs };
           toUpsert.forEach((row) => { newMap[row.student_id] = { ...row, _autoForwarded: true }; });
           setCallLogs(newMap);
