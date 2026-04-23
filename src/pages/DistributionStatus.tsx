@@ -121,7 +121,7 @@ const DistributionStatus = () => {
       // Inventory rows
       const { data: inv } = await supabase
         .from("inventory_items")
-        .select("item_name, size, current_stock, distributed, damaged, missing, reserved");
+        .select("item_name, size, ytd_received, current_stock, distributed, damaged, missing, reserved");
       const invMap: Record<string, InventoryRow> = {};
       const tshirtMap: Record<string, InventoryRow> = {};
       (inv as any[])?.forEach((row: any) => {
