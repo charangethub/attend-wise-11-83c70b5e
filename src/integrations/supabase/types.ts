@@ -732,6 +732,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      normalize_inventory_grade_bucket: {
+        Args: { _grade: string }
+        Returns: string
+      }
       restore_attendance_from_logs:
         | { Args: never; Returns: number }
         | {
