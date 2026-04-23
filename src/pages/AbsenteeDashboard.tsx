@@ -147,29 +147,53 @@ const AbsenteeDashboard = () => {
           .from("call_logs" as any)
           .upsert(toUpsert as any[], { onConflict: "student_id,absent_date" });
 
-        if (!error) {
-          await Promise.all(
-            toUpsert.map((row) =>
-              supabase
-                .from("attendance")
-                .update({ remark: buildAbsenteeRemark(row.absence_reason, row.comment) })
-                .eq("student_id", row.student_id)
-                .eq("date", selectedDate)
-                .in("status", ["A", "AB", "L"]),
-            ),
-          );
-
-          await syncAbsenteeSheet(selectedDate);
-
-          const newMap = { ...callLogs };
-          toUpsert.forEach((row) => { newMap[row.student_id] = { ...row, _autoForwarded: true }; });
-          setCallLogs(newMap);
+        // ✅ NEW: show error toast if upsert fails, and stop early
+        if (error) {
+          toast.error(`Auto-forward failed to save call logs: ${error.message}`);
+          return;
         }
+
+        // ✅ CHANGED: Promise.allSettled instead of Promise.all
+        // so one failed remark update doesn't abort the rest
+        await Promise.allSettled(
+          toUpsert.map((row) =>
+            supabase
+              .from("attendance")
+              .update({ remark: buildAbsenteeRemark(row.absence_reason, row.comment) })
+              .eq("student_id", row.student_id)
+              .eq("date", selectedDate)
+              .in("status", ["A", "AB", "L"]),
+          ),
+        );
+
+        // ✅ NEW: wait 250ms so Postgres finishes committing the remark
+        // writes before the edge function re-reads the attendance table
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        // ✅ NEW: try/catch around sync so errors are visible, not silent
+        try {
+          await syncAbsenteeSheet(selectedDate);
+          toast.success(`Auto-forwarded ${toUpsert.length} remark(s) synced to Google Sheet`);
+        } catch (syncErr: any) {
+          console.error("Auto-forward: Sheet sync failed", syncErr);
+          toast.error(
+            `Remarks saved but Google Sheet sync failed: ${syncErr?.message ?? "unknown error"}. Try Sync Sheet manually.`,
+          );
+        }
+
+        const newMap = { ...callLogs };
+        toUpsert.forEach((row) => { newMap[row.student_id] = { ...row, _autoForwarded: true }; });
+        setCallLogs(newMap);
       }
     };
 
-    void autoForward();
-  }, [loading, attendance, callLogs, selectedDate, user]);
+    // ✅ FIXED: proper error handler instead of void (fire-and-forget)
+    autoForward().catch((err: any) => {
+      console.error("Auto-forward crashed:", err);
+      toast.error(`Auto-forward failed: ${err?.message ?? "unknown error"}`);
+    });
+
+  }, [loading, attendance, callLogs, selectedDate, user]);  // ✅ THIS LINE WAS MISSING
 
   const absentees = useMemo(() => {
     const studentAttMap = new Map<string, any>();
