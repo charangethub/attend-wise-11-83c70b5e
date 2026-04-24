@@ -179,7 +179,15 @@ const DistributionStatus = () => {
     ITEM_TYPES.forEach(t => {
       const inv = inventoryByItem[t];
       const ytd = inv?.ytd_received ?? 0;
-      counts[t] = { given: 0, ytd, available: inv?.current_stock ?? 0 };
+      const available = Math.max(
+        0,
+        (inv?.ytd_received ?? 0) -
+          (inv?.distributed ?? 0) -
+          (inv?.damaged ?? 0) -
+          (inv?.missing ?? 0) -
+          (inv?.reserved ?? 0),
+      );
+      counts[t] = { given: 0, ytd, available };
     });
     Object.values(distMap).forEach(items => {
       ITEM_TYPES.forEach(t => {
@@ -427,7 +435,14 @@ const DistributionStatus = () => {
             const inv = tshirtBySize[sz];
             const ytd = inv?.ytd_received ?? 0;
             const given = tshirtGivenBySize[sz] ?? 0;
-            const available = inv?.current_stock ?? 0;
+            const available = Math.max(
+              0,
+              (inv?.ytd_received ?? 0) -
+                (inv?.distributed ?? 0) -
+                (inv?.damaged ?? 0) -
+                (inv?.missing ?? 0) -
+                (inv?.reserved ?? 0),
+            );
             return (
               <div key={sz} className="rounded-lg border border-border bg-muted/30 p-2 text-center">
                 <p className="text-[11px] font-bold uppercase text-muted-foreground">{sz}</p>
