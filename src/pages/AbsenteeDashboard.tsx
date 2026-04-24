@@ -65,20 +65,34 @@ const AbsenteeDashboard = () => {
 
       const clMap: Record<string, any> = {};
       if (studentIds.length > 0) {
-        const chunks: string[][] = [];
-        for (let i = 0; i < studentIds.length; i += 100) chunks.push(studentIds.slice(i, i + 100));
-        await Promise.all(
-          chunks.map(async (chunk) => {
-            const { data } = await supabase
-              .from("call_logs" as any)
-              .select("*")
-              .in("student_id", chunk)
-              .eq("absent_date", selectedDate);
-            (data as any[])?.forEach((row: any) => {
-              clMap[row.student_id] = row;
-            });
-          }),
-        );
+        // Use a single combined in() query for small/medium sets to reduce DB load.
+        // Only chunk when student count exceeds Postgres-friendly threshold.
+        const SINGLE_QUERY_THRESHOLD = 500;
+        const collect = (rows: any[] | null | undefined) => {
+          (rows ?? []).forEach((row: any) => { clMap[row.student_id] = row; });
+        };
+
+        if (studentIds.length <= SINGLE_QUERY_THRESHOLD) {
+          const { data } = await supabase
+            .from("call_logs" as any)
+            .select("student_id, call_status, absence_reason, comment, expected_return_date, absent_date, created_by, created_at, updated_at, id")
+            .in("student_id", studentIds)
+            .eq("absent_date", selectedDate);
+          collect(data as any[]);
+        } else {
+          const chunks: string[][] = [];
+          for (let i = 0; i < studentIds.length; i += 500) chunks.push(studentIds.slice(i, i + 500));
+          await Promise.all(
+            chunks.map(async (chunk) => {
+              const { data } = await supabase
+                .from("call_logs" as any)
+                .select("student_id, call_status, absence_reason, comment, expected_return_date, absent_date, created_by, created_at, updated_at, id")
+                .in("student_id", chunk)
+                .eq("absent_date", selectedDate);
+              collect(data as any[]);
+            }),
+          );
+        }
       }
 
       setStudents(studentRows);
