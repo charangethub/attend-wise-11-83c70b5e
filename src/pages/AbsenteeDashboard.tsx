@@ -34,6 +34,11 @@ const AbsenteeDashboard = () => {
   const [historyStudent, setHistoryStudent] = useState<any>(null);
   const autoForwardedRef = useRef(false);
 
+  // Reset auto-forward only when date changes — not on every fetchData/tab-switch
+  useEffect(() => {
+    autoForwardedRef.current = false;
+  }, [selectedDate]);
+
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 300);
     return () => clearTimeout(t);
@@ -43,7 +48,6 @@ const AbsenteeDashboard = () => {
     if (!activeSlug) return;
 
     setLoading(true);
-    autoForwardedRef.current = false;
 
     try {
       const studentRows = await fetchDatasetStudents<any>(

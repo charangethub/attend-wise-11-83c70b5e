@@ -27,8 +27,16 @@ export function useAttendanceAutoRefresh({
   useEffect(() => {
     if (!enabled) return;
 
+    // Cooldown: don't refresh more than once every 30s on visibility change.
+    // This prevents every tab-switch from triggering a full Sheet sync.
+    let lastVisibilityRefresh = 0;
+    const VISIBILITY_COOLDOWN_MS = 30_000;
+
     const handleVisibilityChange = () => {
       if (!document.hidden) {
+        const now = Date.now();
+        if (now - lastVisibilityRefresh < VISIBILITY_COOLDOWN_MS) return;
+        lastVisibilityRefresh = now;
         void onRefresh();
       }
     };
