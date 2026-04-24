@@ -134,7 +134,7 @@ const AbsenteeDashboard = () => {
               absent_date: selectedDate,
               call_status: row.call_status,
               absence_reason: row.absence_reason,
-              comment: `[Auto-forwarded from ${row.absent_date}] ${row.comment || ""}`.trim(),
+              comment: (row.comment || "").replace(/(\[Auto-forwarded[^\]]*\]\s*)+/g, "").trim() || null,
               expected_return_date: row.expected_return_date,
               created_by: user.id,
             });
@@ -269,7 +269,7 @@ const AbsenteeDashboard = () => {
     const cl = s.callLog;
     if (!cl) return <span className="text-xs text-muted-foreground">—</span>;
 
-    const comment = cl.comment?.replace(/^\[Auto-forwarded.*?\]\s*/, "").trim();
+    const comment = cl.comment?.replace(/(\[Auto-forwarded[^\]]*\]\s*)+/g, "").trim();
     const reason = cl.absence_reason;
 
     if (comment) {

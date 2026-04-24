@@ -79,7 +79,7 @@ const CallLogDialog = ({
     if (open) {
       setCallStatus(existingLog?.call_status || "");
       setAbsenceReason(existingLog?.absence_reason || "");
-      setComment(existingLog?.comment || "");
+      setComment((existingLog?.comment || "").replace(/(\[Auto-forwarded[^\]]*\]\s*)+/g, "").trim());
       setExpectedReturn(existingLog?.expected_return_date ? new Date(existingLog.expected_return_date + "T00:00:00") : undefined);
     }
   }, [open, existingLog]);
