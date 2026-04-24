@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarIcon, Save } from "lucide-react";
+import { CalendarIcon, Check, Save } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -74,6 +74,7 @@ const CallLogDialog = ({
   const [comment, setComment] = useState("");
   const [expectedReturn, setExpectedReturn] = useState<Date | undefined>();
   const [saving, setSaving] = useState(false);
+  const [savedOptimistic, setSavedOptimistic] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -81,6 +82,8 @@ const CallLogDialog = ({
       setAbsenceReason(existingLog?.absence_reason || "");
       setComment((existingLog?.comment || "").replace(/(\[Auto-forwarded[^\]]*\]\s*)+/g, "").trim());
       setExpectedReturn(existingLog?.expected_return_date ? new Date(existingLog.expected_return_date + "T00:00:00") : undefined);
+      setSavedOptimistic(false);
+      setSaving(false);
     }
   }, [open, existingLog]);
 
@@ -95,6 +98,7 @@ const CallLogDialog = ({
     }
 
     setSaving(true);
+    setSavedOptimistic(true);
     try {
       const payload = {
         student_id: studentId,
@@ -154,6 +158,7 @@ const CallLogDialog = ({
       onSaved?.();
     } catch (e: any) {
       toast.error("Failed to save call log: " + (e.message || "Unknown error"));
+      setSavedOptimistic(false);
     } finally {
       setSaving(false);
     }
@@ -265,9 +270,13 @@ const CallLogDialog = ({
           </div>
 
           {/* Save Button */}
-          <Button onClick={handleSave} disabled={saving} className="w-full gap-2">
-            <Save className="h-4 w-4" />
-            {saving ? "Saving..." : "Save Call Log"}
+          <Button
+            onClick={handleSave}
+            disabled={saving || savedOptimistic}
+            className="w-full gap-2"
+          >
+            {savedOptimistic ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />}
+            {savedOptimistic ? "Saved" : saving ? "Saving..." : "Save Call Log"}
           </Button>
         </div>
       </DialogContent>
