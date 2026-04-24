@@ -44,11 +44,8 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: false, error: 'URL host not allowed' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     // Allowlist: only Google Apps Script web app deployments are valid sync targets
-    if (!/(^|\.)(googleusercontent\.com|google\.com)$/i.test(host) || !/script\.google(usercontent)?\.com$/i.test(host)) {
-      // Accept script.google.com and script.googleusercontent.com (Apps Script /exec hosts)
-      if (host !== 'script.google.com' && host !== 'script.googleusercontent.com') {
-        return new Response(JSON.stringify({ success: false, error: 'Only Google Apps Script URLs (script.google.com) are allowed' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-      }
+    if (host !== 'script.google.com' && host !== 'script.googleusercontent.com') {
+      return new Response(JSON.stringify({ success: false, error: 'Only Google Apps Script URLs (script.google.com) are allowed' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const start = Date.now();
