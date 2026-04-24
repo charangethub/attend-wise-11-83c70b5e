@@ -120,7 +120,12 @@ const CallLogDialog = ({
         .eq("date", absentDate)
         .in("status", ["A", "AB", "L"]);
 
-      await syncAbsenteeSheet(absentDate);
+      // Fire-and-forget sheet sync — it hits a slow Google Apps Script (up to 45s)
+      // and shouldn't block the UI. Errors are surfaced as a non-blocking toast.
+      void syncAbsenteeSheet(absentDate).catch((err) => {
+        console.error("[CallLogDialog] absentee sheet sync failed:", err);
+        toast.error("Saved, but sheet sync failed: " + (err?.message || "Unknown error"));
+      });
 
       toast.success("Call log saved!");
 
