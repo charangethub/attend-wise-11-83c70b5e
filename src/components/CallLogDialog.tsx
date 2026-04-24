@@ -106,29 +106,37 @@ const CallLogDialog = ({
         created_by: user?.id,
       };
 
-      const { error } = await supabase
-        .from("call_logs" as any)
-        .upsert(payload as any, { onConflict: "student_id,absent_date" });
-
-      if (error) throw error;
-
       const remarkText = buildAbsenteeRemark(absenceReason, comment);
-      await supabase
-        .from("attendance")
-        .update({ remark: remarkText })
-        .eq("student_id", studentId)
-        .eq("date", absentDate)
-        .in("status", ["A", "AB", "L"]);
 
-      // Fire-and-forget sheet sync — it hits a slow Google Apps Script (up to 45s)
-      // and shouldn't block the UI. Errors are surfaced as a non-blocking toast.
+      // Run the call_log upsert and the attendance remark update in parallel —
+      // they're independent writes, no need to serialize them.
+      const [upsertRes, attendanceRes] = await Promise.all([
+        supabase
+          .from("call_logs" as any)
+          .upsert(payload as any, { onConflict: "student_id,absent_date" }),
+        supabase
+          .from("attendance")
+          .update({ remark: remarkText })
+          .eq("student_id", studentId)
+          .eq("date", absentDate)
+          .in("status", ["A", "AB", "L"]),
+      ]);
+
+      if (upsertRes.error) throw upsertRes.error;
+      if (attendanceRes.error) throw attendanceRes.error;
+
+      // Close the dialog and show success IMMEDIATELY — everything below is
+      // fire-and-forget so the UI never waits on slow background work.
+      toast.success("Call log saved!");
+      onOpenChange(false);
+
+      // Fire-and-forget sheet sync — slow Google Apps Script call (up to 45s).
       void syncAbsenteeSheet(absentDate).catch((err) => {
         console.error("[CallLogDialog] absentee sheet sync failed:", err);
         toast.error("Saved, but sheet sync failed: " + (err?.message || "Unknown error"));
       });
 
-      toast.success("Call log saved!");
-
+      // Fire-and-forget activity log.
       if (user) {
         void logActivity({
           userId: user.id,
@@ -142,8 +150,8 @@ const CallLogDialog = ({
         });
       }
 
+      // Notify parent last — its refetch shouldn't block the dialog close.
       onSaved?.();
-      onOpenChange(false);
     } catch (e: any) {
       toast.error("Failed to save call log: " + (e.message || "Unknown error"));
     } finally {
