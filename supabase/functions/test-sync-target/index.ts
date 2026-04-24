@@ -28,8 +28,25 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const url: string = (body?.url ?? '').trim();
-    if (!url || !/^https?:\/\//i.test(url))
-      return new Response(JSON.stringify({ success: false, error: 'Valid URL required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (!url || !/^https:\/\//i.test(url))
+      return new Response(JSON.stringify({ success: false, error: 'Valid https:// URL required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+    // SSRF protection: block private/reserved hosts and require Google Apps Script domain
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid URL' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const host = parsedUrl.hostname.toLowerCase();
+    const blockedHost = /^(localhost|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|::1|fc00:|fd00:|fe80:)/i;
+    if (blockedHost.test(host)) {
+      return new Response(JSON.stringify({ success: false, error: 'URL host not allowed' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    // Allowlist: only Google Apps Script web app deployments are valid sync targets
+    if (host !== 'script.google.com' && host !== 'script.googleusercontent.com') {
+      return new Response(JSON.stringify({ success: false, error: 'Only Google Apps Script URLs (script.google.com) are allowed' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     const start = Date.now();
     try {
