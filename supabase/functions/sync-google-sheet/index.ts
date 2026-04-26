@@ -110,14 +110,18 @@ Deno.serve(async (req) => {
       const cols = rows[i];
       const rollNo = (cols[rollNoIdx] || '').trim();
       const name_s = (cols[studentNameIdx] || '').trim();
-      if (!rollNo || !name_s) continue;
+      const userIdRaw = userIdVedantuIdx >= 0 ? (cols[userIdVedantuIdx] || '').trim() : '';
+      // A row is valid if it has a name AND at least one identifier (roll_no OR user_id_vedantu).
+      // Roll number may legitimately be empty for newly-enrolled students; user_id_vedantu is the
+      // primary identifier in that case.
+      if (!name_s) continue;
       const sanitizedRollNo = rollNo.replace(/[^a-zA-Z0-9\-_]/g, '');
-      if (!sanitizedRollNo) continue;
+      if (!sanitizedRollNo && !userIdRaw) continue;
       students.push({
         roll_no: sanitizedRollNo, student_name: name_s, dataset: slug,
         zone: zoneIdx >= 0 ? (cols[zoneIdx] || '').trim() : '',
         center: centerIdx >= 0 ? (cols[centerIdx] || '').trim() : '',
-        user_id_vedantu: userIdVedantuIdx >= 0 ? (cols[userIdVedantuIdx] || '').trim() : '',
+        user_id_vedantu: userIdRaw,
         order_id: orderIdIdx >= 0 ? (cols[orderIdIdx] || '').trim() : '',
         curriculum: curriculumIdx >= 0 ? (cols[curriculumIdx] || '').trim() : '',
         grade: gradeIdx >= 0 ? (cols[gradeIdx] || '').trim() : '',
@@ -134,16 +138,60 @@ Deno.serve(async (req) => {
 
     if (students.length === 0) return new Response(JSON.stringify({ success: false, error: `No students parsed from ${rows.length - 1} rows.`, found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const rollNosFromSheet = students.map(s => s.roll_no);
-    const { data: existingStudents } = await supabase.from('students').select('id, roll_no').eq('dataset', slug);
-    const toDelete = (existingStudents ?? []).filter(s => !rollNosFromSheet.includes(s.roll_no)).map(s => s.id);
+    // Build sets of identifiers present in the sheet so we can prune students that no longer exist.
+    // Match by user_id_vedantu first (primary identifier), then fall back to roll_no.
+    const sheetUserIds = new Set(students.map(s => s.user_id_vedantu).filter((v: string) => v && v.length > 0));
+    const sheetRollNos = new Set(students.map(s => s.roll_no).filter((v: string) => v && v.length > 0));
+
+    const { data: existingStudents } = await supabase
+      .from('students')
+      .select('id, roll_no, user_id_vedantu')
+      .eq('dataset', slug);
+
+    const toDelete = (existingStudents ?? []).filter((s: any) => {
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
+      if (uid && sheetUserIds.has(uid)) return false;
+      if (roll && sheetRollNos.has(roll)) return false;
+      return true;
+    }).map((s: any) => s.id);
     if (toDelete.length > 0) { for (let i = 0; i < toDelete.length; i += 100) { await supabase.from('students').delete().in('id', toDelete.slice(i, i + 100)); } }
+
+    // Build lookup maps of remaining existing rows by user_id_vedantu and roll_no for fast match.
+    const remaining = (existingStudents ?? []).filter((s: any) => !toDelete.includes(s.id));
+    const byUserId = new Map<string, string>();
+    const byRollNo = new Map<string, string>();
+    for (const s of remaining as any[]) {
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
+      if (uid) byUserId.set(uid, s.id);
+      if (roll) byRollNo.set(roll, s.id);
+    }
 
     let synced = 0;
     const upsertErrors: string[] = [];
     for (const student of students) {
-      const { error } = await supabase.from('students').upsert(student, { onConflict: 'roll_no' });
-      if (!error) synced++; else if (upsertErrors.length < 3) upsertErrors.push(error.message);
+      const uid = (student.user_id_vedantu || '').trim();
+      const roll = (student.roll_no || '').trim();
+      // Prefer matching by user_id_vedantu (stable identifier from the source).
+      const existingId = (uid && byUserId.get(uid)) || (roll && byRollNo.get(roll)) || null;
+
+      let error: any = null;
+      if (existingId) {
+        ({ error } = await supabase.from('students').update(student).eq('id', existingId));
+      } else {
+        ({ error } = await supabase.from('students').insert(student));
+      }
+      if (!error) {
+        synced++;
+        // Track newly inserted rows so subsequent rows in the same sheet don't re-insert.
+        if (!existingId) {
+          if (uid) byUserId.set(uid, 'new');
+          if (roll) byRollNo.set(roll, 'new');
+        }
+      } else if (upsertErrors.length < 3) {
+        upsertErrors.push(error.message);
+      }
     }
 
     if (synced === 0 && upsertErrors.length > 0) return new Response(JSON.stringify({ success: false, error: `All upserts failed: ${upsertErrors[0]}` }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

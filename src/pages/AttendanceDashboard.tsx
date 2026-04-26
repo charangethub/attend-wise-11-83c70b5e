@@ -278,7 +278,7 @@ const AttendanceDashboard = () => {
       const { data, error } = await supabase.functions.invoke("sync-google-sheet", { body: { dataset_slug: activeSlug } });
       if (error) throw error;
       toast.success(`Synced ${data?.synced ?? 0} students`);
-      const stuRes = await supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug);
+      const stuRes = await supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").eq("dataset", activeSlug);
       setStudents(stuRes.data ?? []);
     } catch (err: any) {
       toast.error("Sync failed: " + (err.message || "Unknown"));

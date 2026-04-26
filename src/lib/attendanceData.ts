@@ -18,7 +18,9 @@ export async function fetchDatasetStudents<T = any>(
   columns: string,
   options: { onlyEnrolled?: boolean } = {},
 ): Promise<T[]> {
-  let query: any = supabase.from("students").select(columns).neq("roll_no", "").eq("dataset", activeSlug);
+  // No roll_no filter: students may legitimately have an empty roll number and must still appear.
+  // user_id_vedantu is the primary identifier from the source sheet.
+  let query: any = supabase.from("students").select(columns).eq("dataset", activeSlug);
 
   if (options.onlyEnrolled) {
     query = query.eq("enrollment_status", "ENROLLED");
