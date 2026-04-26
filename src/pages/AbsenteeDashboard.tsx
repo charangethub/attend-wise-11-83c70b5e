@@ -225,7 +225,7 @@ const AbsenteeDashboard = () => {
       .filter((s) => {
         if (!debouncedSearch) return true;
         const q = debouncedSearch.toLowerCase();
-        return s.student_name.toLowerCase().includes(q) || s.roll_no.toLowerCase().includes(q);
+        return s.student_name.toLowerCase().includes(q) || (s.roll_no || "").toLowerCase().includes(q) || (s.user_id_vedantu || "").toLowerCase().includes(q);
       })
       .map((s) => {
         const att = studentAttMap.get(s.id)!;
@@ -243,7 +243,7 @@ const AbsenteeDashboard = () => {
         if (statusFilter === "absent_no_remark") return !s.callLog;
         return true;
       })
-      .sort((a, b) => a.roll_no.localeCompare(b.roll_no));
+      .sort((a, b) => (a.roll_no || a.user_id_vedantu || "").localeCompare(b.roll_no || b.user_id_vedantu || ""));
   }, [students, attendance, classroomFilter, debouncedSearch, statusFilter, callLogs]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);

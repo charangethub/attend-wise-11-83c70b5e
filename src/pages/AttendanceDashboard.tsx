@@ -179,13 +179,13 @@ const AttendanceDashboard = () => {
   const filteredStudents = useMemo(() => students.filter((s) => {
     if (enrollmentFilter !== "all" && s.enrollment_status !== enrollmentFilter) return false;
     if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false;
-    if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
+    if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !(s.roll_no || "").toLowerCase().includes(q)) return false; }
     if (showUnmarkedOnly && attendance[s.id]) return false;
     if (statusFilter === "P" && attendance[s.id] !== "P") return false;
     if (statusFilter === "A" && attendance[s.id] !== "A") return false;
     if (statusFilter === "H" && attendance[s.id] !== "H") return false;
     return true;
-  }).sort((a, b) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
+  }).sort((a, b) => (a.roll_no || "").localeCompare(b.roll_no || "")), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
 
   const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance) || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
@@ -278,7 +278,7 @@ const AttendanceDashboard = () => {
       const { data, error } = await supabase.functions.invoke("sync-google-sheet", { body: { dataset_slug: activeSlug } });
       if (error) throw error;
       toast.success(`Synced ${data?.synced ?? 0} students`);
-      const stuRes = await supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").neq("roll_no", "").eq("dataset", activeSlug);
+      const stuRes = await supabase.from("students").select("id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status").eq("dataset", activeSlug);
       setStudents(stuRes.data ?? []);
     } catch (err: any) {
       toast.error("Sync failed: " + (err.message || "Unknown"));
