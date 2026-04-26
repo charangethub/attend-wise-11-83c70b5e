@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 const AUTO_FORWARD_PREFIX = /^\[Auto-forwarded.*?\]\s*/i;
 
@@ -14,18 +14,7 @@ export function buildAbsenteeRemark(absenceReason?: string | null, comment?: str
 }
 
 export async function syncAbsenteeSheet(date: string) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) return null;
-
-  const { data, error } = await supabase.functions.invoke("sync-to-sheet", {
-    body: { date, only: ["sync_absentees"] },
-    headers: { Authorization: `Bearer ${session.access_token}` },
-  });
-
-  if (error) throw error;
+  const data = await queueAttendanceSheetSync(date, ["sync_absentees"]);
   if (data?.success === false) {
     throw new Error(data.error || data.errors?.[0] || "Absentee sync failed");
   }

@@ -188,13 +188,18 @@ const AdminPanel = () => {
     setSyncingPush(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const body: any = { date: today, wait: true };
+      const body: any = { date: today };
       if (mode === "full") body.only = ["sync_master", "sync_attendance", "sync_absentees", "sync_analytics"];
       // attendance mode uses default (skips sync_master) for speed
       const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body });
       if (error) throw error;
       if (data?.success) {
         const results = data.results ?? [];
+        if (data.queued) {
+          toast.success(`✅ Sync queued to ${data.targets ?? syncTargets.filter(t => t.is_active).length} target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
+          fetchSettings();
+          return;
+        }
         const successCount = results.filter((r: any) => r.success).length;
         toast.success(`✅ Pushed to ${successCount}/${results.length} target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
         if (results.some((r: any) => !r.success)) {

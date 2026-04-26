@@ -43,8 +43,9 @@ Deno.serve(async (req) => {
       .single();
     const activeSlug = activeDataset?.slug ?? null;
 
-    // Filter students by active dataset
-    let studentsQuery = supabase.from('students').select('*').eq('enrollment_status', 'ENROLLED').neq('roll_no', '');
+    // Filter students by active dataset. Do NOT require roll_no here:
+    // new students may only have user_id_vedantu, but their attendance still must sync.
+    let studentsQuery = supabase.from('students').select('*').eq('enrollment_status', 'ENROLLED');
     if (activeSlug) studentsQuery = studentsQuery.eq('dataset', activeSlug);
     const { data: studentsData } = await studentsQuery;
 
@@ -115,7 +116,7 @@ Deno.serve(async (req) => {
             try {
               const controller = new AbortController();
               const timeout = setTimeout(() => controller.abort(), 60000);
-              const res = await fetch(target.apps_script_url, {
+              const res = await fetch(target.apps_script_url.trim(), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),

@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
 import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
 import { parseCsv, normalizeHeader } from "@/lib/csvParse";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const currentYear = new Date().getFullYear();
@@ -116,6 +117,9 @@ const AttendanceRecords = () => {
       if (skippedReasons.length > 0) console.info("Skipped rows:", skippedReasons);
       setCsvUploadOpen(false);
       fetchData();
+      Array.from(new Set(upserts.map((row) => row.date))).forEach((date) => {
+        void queueAttendanceSheetSync(date).catch((err) => console.warn("CSV attendance sheet sync failed:", err));
+      });
     } catch (err: any) { toast.error("Upload failed: " + err.message); }
     setCsvUploading(false);
   };

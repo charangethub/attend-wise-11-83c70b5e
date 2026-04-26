@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { fetchDatasetStudents } from "@/lib/attendanceData";
 import { logActivity } from "@/hooks/useActivityLog";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 type Student = { id: string; roll_no: string; student_name: string; classroom_name: string };
 type Permission = {
@@ -170,6 +171,7 @@ const PermissionEntry = () => {
       setReason("");
       setDialogBatchFilter("all");
       void fetchData();
+      void queueAttendanceSheetSync(selectedDate).catch((err) => console.warn("Permission sheet sync failed:", err));
     } catch (e: any) {
       toast.error("Failed: " + (e.message || "Unknown error"));
     } finally {

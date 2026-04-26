@@ -1,30 +1,29 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 export function useAutoSync() {
   const { data: settings } = useSystemSettings();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
     const intervalMinutes = parseFloat(settings?.sync_interval_minutes ?? "0");
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (!intervalMinutes || intervalMinutes <= 0) return;
+    const safeIntervalMinutes = Math.max(intervalMinutes, 2);
 
     const doSync = async () => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
         const today = new Date().toISOString().slice(0, 10);
-        await supabase.functions.invoke("sync-to-sheet", {
-          body: { date: today },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
+        await queueAttendanceSheetSync(today);
       } catch (e) { console.warn("Auto-sync failed:", e); }
+      finally { inFlightRef.current = false; }
     };
 
-    doSync();
-    intervalRef.current = setInterval(doSync, intervalMinutes * 60 * 1000);
+    intervalRef.current = setInterval(doSync, safeIntervalMinutes * 60 * 1000);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [settings?.sync_interval_minutes]);
 }
