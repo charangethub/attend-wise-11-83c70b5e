@@ -51,11 +51,11 @@ Deno.serve(async (req) => {
     const start = Date.now();
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 25000);
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ping', date: new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify({ action: 'ping', test: true, date: new Date().toISOString().slice(0, 10) }),
         redirect: 'follow',
         signal: controller.signal,
       });
@@ -77,11 +77,15 @@ Deno.serve(async (req) => {
       }
       let parsed: any = null;
       try { parsed = JSON.parse(text); } catch {}
+      if (parsed?.success === false) {
+        return new Response(JSON.stringify({ success: false, error: parsed.error ?? 'Apps Script returned success=false', elapsed_ms: elapsed, response: parsed }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
       return new Response(JSON.stringify({ success: true, elapsed_ms: elapsed, response: parsed ?? text.slice(0, 200) }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } catch (e: any) {
       const elapsed = Date.now() - start;
       const msg = e?.message ?? String(e);
-      return new Response(JSON.stringify({ success: false, error: msg.includes('abort') ? 'Timeout (25s) — Apps Script took too long to respond' : msg, elapsed_ms: elapsed }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      const timeoutMessage = 'Timeout (10s) — Apps Script did not answer the lightweight ping. Add a fast ping handler before heavy sync work: if (payload.action === "ping") return JSON success immediately.';
+      return new Response(JSON.stringify({ success: false, error: msg.includes('abort') ? timeoutMessage : msg, elapsed_ms: elapsed }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
   } catch (error) {
     console.error('[test-sync-target] internal error:', error);
