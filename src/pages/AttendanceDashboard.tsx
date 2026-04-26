@@ -15,6 +15,7 @@ import { logActivity } from "@/hooks/useActivityLog";
 import RemarkDialog from "@/components/RemarkDialog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
 type AttendanceDraft = { attendance: Record<string, string>; remarks: Record<string, string> };
@@ -267,7 +268,7 @@ const AttendanceDashboard = () => {
         }
       } catch {}
       try {
-        await supabase.functions.invoke("sync-to-sheet", { body: { date: selectedDate } });
+        await queueAttendanceSheetSync(selectedDate);
       } catch {}
     })();
   };
