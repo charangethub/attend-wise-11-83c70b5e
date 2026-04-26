@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
 export function useAutoSync() {
   const { data: settings } = useSystemSettings();
@@ -13,13 +13,8 @@ export function useAutoSync() {
 
     const doSync = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
         const today = new Date().toISOString().slice(0, 10);
-        await supabase.functions.invoke("sync-to-sheet", {
-          body: { date: today },
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
+        await queueAttendanceSheetSync(today);
       } catch (e) { console.warn("Auto-sync failed:", e); }
     };
 
