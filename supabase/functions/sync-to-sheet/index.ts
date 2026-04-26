@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const body = await req.json().catch(() => ({}));
-    const { date, only } = body as { date?: string; only?: string[] };
+    const { date, only, wait } = body as { date?: string; only?: string[]; wait?: boolean };
     if (!date)
       return new Response(JSON.stringify({ error: 'date required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
@@ -102,77 +102,107 @@ Deno.serve(async (req) => {
       : allActions.filter(a => a.action !== 'sync_master'); // default: skip heavy master push
 
     // Push to ALL active sync targets
-    const targetResults = await Promise.all(
-      allTargets.map(async (target) => {
-        // Run actions SEQUENTIALLY per target — Apps Script serializes requests per deployment,
-        // so parallel POSTs just queue up and time out. Sequential is actually faster.
-        const perActionResults: { action: string; success: boolean; error?: string }[] = [];
-        for (const payload of actions) {
-          try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 45000);
-            const res = await fetch(target.apps_script_url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload),
-              redirect: 'follow',
-              signal: controller.signal,
-            });
-            clearTimeout(timeout);
-            const text = await res.text();
-            const trimmed = text.trim();
-            const isHtml = trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
-            if (!res.ok) {
-              const hint = isHtml && trimmed.includes('Page Not Found')
-                ? 'Apps Script URL invalid or not deployed (Page Not Found). Re-deploy as Web app, set Execute as: Me, Who has access: Anyone, then paste the new /exec URL.'
-                : isHtml ? 'Got HTML response (likely login/permission page). Re-deploy Apps Script with access "Anyone".'
-                : `HTTP ${res.status}`;
-              perActionResults.push({ action: payload.action, success: false, error: hint });
-            } else if (isHtml) {
-              perActionResults.push({ action: payload.action, success: false, error: 'Apps Script returned HTML instead of JSON. Check deployment access permissions.' });
-            } else {
-              try {
-                const json = JSON.parse(text);
-                perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
-              } catch {
-                perActionResults.push({ action: payload.action, success: true });
+    // Push the actual Apps Script POSTs into a single async pipeline. Apps Script can take
+    // 30-60s per call; the Supabase Edge gateway times out at ~25s. We therefore default to
+    // FIRE-AND-FORGET: kick the work off via EdgeRuntime.waitUntil and return immediately.
+    // Callers that need the real result (e.g. the admin "Test Sync" button) can pass
+    // { wait: true } to keep the original synchronous behaviour.
+    const pushAll = async () => {
+      const targetResults = await Promise.all(
+        allTargets.map(async (target) => {
+          const perActionResults: { action: string; success: boolean; error?: string }[] = [];
+          for (const payload of actions) {
+            try {
+              const controller = new AbortController();
+              const timeout = setTimeout(() => controller.abort(), 60000);
+              const res = await fetch(target.apps_script_url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                redirect: 'follow',
+                signal: controller.signal,
+              });
+              clearTimeout(timeout);
+              const text = await res.text();
+              const trimmed = text.trim();
+              const isHtml = trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
+              if (!res.ok) {
+                const hint = isHtml && trimmed.includes('Page Not Found')
+                  ? 'Apps Script URL invalid or not deployed (Page Not Found). Re-deploy as Web app, set Execute as: Me, Who has access: Anyone, then paste the new /exec URL.'
+                  : isHtml ? 'Got HTML response (likely login/permission page). Re-deploy Apps Script with access "Anyone".'
+                  : `HTTP ${res.status}`;
+                perActionResults.push({ action: payload.action, success: false, error: hint });
+              } else if (isHtml) {
+                perActionResults.push({ action: payload.action, success: false, error: 'Apps Script returned HTML instead of JSON. Check deployment access permissions.' });
+              } else {
+                try {
+                  const json = JSON.parse(text);
+                  perActionResults.push({ action: payload.action, success: json.success !== false, error: json.error });
+                } catch {
+                  perActionResults.push({ action: payload.action, success: true });
+                }
               }
+            } catch (e: any) {
+              const msg = e?.message ?? String(e);
+              perActionResults.push({ action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (60s) — Apps Script took too long' : msg });
             }
-          } catch (e: any) {
-            const msg = e?.message ?? String(e);
-            perActionResults.push({ action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (45s) — Apps Script took too long' : msg });
           }
-        }
-        const failures = perActionResults.filter(r => !r.success);
-        return {
-          label: target.label,
-          success: failures.length === 0,
-          synced: perActionResults.length - failures.length,
-          total_actions: perActionResults.length,
-          ...(failures.length > 0 ? { errors: failures.map(f => `${f.action}: ${f.error}`) } : {}),
-        };
-      })
-    );
+          const failures = perActionResults.filter(r => !r.success);
+          return {
+            label: target.label,
+            success: failures.length === 0,
+            synced: perActionResults.length - failures.length,
+            total_actions: perActionResults.length,
+            ...(failures.length > 0 ? { errors: failures.map(f => `${f.action}: ${f.error}`) } : {}),
+          };
+        })
+      );
 
-    const anySuccess = targetResults.some(r => r.success);
+      const anySuccess = targetResults.some(r => r.success);
+      if (anySuccess) {
+        await supabase.from('system_settings').upsert(
+          { key: 'last_sync_at', value: new Date().toISOString() },
+          { onConflict: 'key' }
+        );
+      }
+      return targetResults;
+    };
 
-    if (anySuccess) {
-      await supabase.from('system_settings').upsert(
-        { key: 'last_sync_at', value: new Date().toISOString() },
-        { onConflict: 'key' }
+    if (wait) {
+      // Synchronous mode — caller wants the actual Apps Script result.
+      const targetResults = await pushAll();
+      const anySuccess = targetResults.some(r => r.success);
+      return new Response(
+        JSON.stringify({
+          success: anySuccess,
+          dataset: activeSlug,
+          total_students: totalStudents,
+          attendance_records: filteredAttData.length,
+          results: targetResults,
+          ...(targetResults.some(r => !r.success) ? { errors: targetResults.filter(r => !r.success).flatMap(r => (r as any).errors ?? [`${r.label}: Failed`]) } : {}),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    // Fire-and-forget mode (default). Continue running pushAll() after we return.
+    // EdgeRuntime.waitUntil keeps the worker alive until the promise settles.
+    // @ts-ignore — EdgeRuntime is provided by the Supabase Functions runtime
+    EdgeRuntime.waitUntil(
+      pushAll().catch((e) => console.error('[sync-to-sheet] background push failed:', e))
+    );
+
     return new Response(
       JSON.stringify({
-        success: anySuccess,
+        success: true,
+        queued: true,
         dataset: activeSlug,
         total_students: totalStudents,
         attendance_records: filteredAttData.length,
-        results: targetResults,
-        ...(targetResults.some(r => !r.success) ? { errors: targetResults.filter(r => !r.success).flatMap(r => (r as any).errors ?? [`${r.label}: Failed`]) } : {}),
+        targets: allTargets.length,
+        message: 'Sync queued — running in the background',
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('[sync-to-sheet] internal error:', error);

@@ -188,7 +188,7 @@ const AdminPanel = () => {
     setSyncingPush(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const body: any = { date: today };
+      const body: any = { date: today, wait: true };
       if (mode === "full") body.only = ["sync_master", "sync_attendance", "sync_absentees", "sync_analytics"];
       // attendance mode uses default (skips sync_master) for speed
       const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body });
