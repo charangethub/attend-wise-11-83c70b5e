@@ -8,12 +8,15 @@ export function useAutoSync() {
   const inFlightRef = useRef(false);
 
   useEffect(() => {
-    const intervalMinutes = parseFloat(settings?.sync_interval_minutes ?? "0");
+    const MIN_SYNC_INTERVAL_MINUTES = 30;
+    const configured = parseFloat(settings?.sync_interval_minutes ?? "0");
+    const intervalMinutes = configured > 0 ? Math.max(MIN_SYNC_INTERVAL_MINUTES, configured) : 0;
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     if (!intervalMinutes || intervalMinutes <= 0) return;
-    const safeIntervalMinutes = Math.max(intervalMinutes, 2);
+    const safeIntervalMinutes = intervalMinutes;
 
     const doSync = async () => {
+      if (document.hidden) return;
       if (inFlightRef.current) return;
       inFlightRef.current = true;
       try {

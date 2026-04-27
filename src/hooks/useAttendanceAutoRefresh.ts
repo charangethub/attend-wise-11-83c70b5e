@@ -66,7 +66,7 @@ export function useAttendanceAutoRefresh({
     const attendanceFilter = exactDate ? `date=eq.${exactDate}` : undefined;
 
     const attendanceChannel = supabase
-      .channel(`${channelKey}:${Date.now()}`)
+      .channel(`attendance-refresh:${channelKey}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "attendance", ...(attendanceFilter ? { filter: attendanceFilter } : {}) },

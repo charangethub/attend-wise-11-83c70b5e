@@ -39,7 +39,7 @@ export function useActiveDataset(): UseActiveDatasetResult {
   }, [fetchDS, tick]);
 
   useEffect(() => {
-    const channelName = `dataset-active-change-${Date.now()}`;
+    const channelName = `dataset-active-change`;
     const channel = supabase
       .channel(channelName)
       .on(

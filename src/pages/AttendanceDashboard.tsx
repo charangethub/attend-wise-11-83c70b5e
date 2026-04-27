@@ -11,7 +11,7 @@ import { toast } from "sonner";
 import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
-import { logActivity } from "@/hooks/useActivityLog";
+import { logActivity, logActivityBatch } from "@/hooks/useActivityLog";
 import RemarkDialog from "@/components/RemarkDialog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
@@ -265,18 +265,16 @@ const AttendanceDashboard = () => {
       try {
         if (changedStudents.length > 0) {
           const studentMap = new Map(students.map((s) => [s.id, s.student_name]));
-          await Promise.all(
-            changedStudents.slice(0, 50).map((sid) =>
-              logActivity({
-                userId: user.id,
-                userEmail: user.email ?? "",
-                userName: user.user_metadata?.full_name ?? user.email ?? "",
-                action: `${SESSION} attendance marked`,
-                studentName: studentMap.get(sid) ?? "",
-                studentId: sid,
-                details: { date: selectedDate, session: SESSION, status: attendanceSnapshot[sid], remark: remarksSnapshot[sid] || "" },
-              })
-            )
+          await logActivityBatch(
+            changedStudents.slice(0, 50).map((sid) => ({
+              userId: user.id,
+              userEmail: user.email ?? "",
+              userName: user.user_metadata?.full_name ?? user.email ?? "",
+              action: `${SESSION} attendance marked`,
+              studentName: studentMap.get(sid) ?? "",
+              studentId: sid,
+              details: { date: selectedDate, session: SESSION, status: attendanceSnapshot[sid], remark: remarksSnapshot[sid] || "" },
+            }))
           );
         }
       } catch {}

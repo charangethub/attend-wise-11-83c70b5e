@@ -64,7 +64,7 @@ export function usePageDataset(pageName: string): UsePageDatasetResult {
 
   // Listen for mapping changes
   useEffect(() => {
-    const channelName = `page-dataset-${pageName}-${Date.now()}`;
+    const channelName = `page-dataset-${pageName}`;
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "page_dataset_mapping" }, () => {

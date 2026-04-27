@@ -29,3 +29,24 @@ export async function logActivity(entry: LogEntry) {
     console.error("Failed to log activity:", e);
   }
 }
+
+export async function logActivityBatch(entries: LogEntry[]) {
+  if (!entries.length) return;
+  try {
+    await supabase.from("activity_logs").insert(
+      entries.map((e) => ({
+        user_id: e.userId,
+        user_email: e.userEmail,
+        user_name: e.userName,
+        action: e.action,
+        entity_type: e.entityType ?? "attendance",
+        entity_id: e.entityId,
+        student_name: e.studentName,
+        student_id: e.studentId,
+        details: e.details ?? {},
+      })) as any
+    );
+  } catch (err) {
+    console.error("Failed to log activity batch:", err);
+  }
+}
