@@ -40,6 +40,7 @@ export function useActiveDataset(): UseActiveDatasetResult {
 
   useEffect(() => {
     const channelName = `dataset-active-change`;
+    supabase.getChannels().filter((c: any) => c.topic === `realtime:${channelName}`).forEach((c) => supabase.removeChannel(c));
     const channel = supabase
       .channel(channelName)
       .on(
