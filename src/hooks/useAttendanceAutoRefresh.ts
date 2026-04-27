@@ -21,8 +21,8 @@ export function useAttendanceAutoRefresh({
   fromDate,
   toDate,
   session,
-  debounceMs = 500,
-  watchStudents = true,
+  debounceMs = 1500,
+  watchStudents = false,
 }: UseAttendanceAutoRefreshOptions) {
   useEffect(() => {
     if (!enabled) return;
@@ -49,24 +49,27 @@ export function useAttendanceAutoRefresh({
     if (!enabled) return;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastRefreshAt = 0;
+    const MIN_REFRESH_INTERVAL_MS = 3000;
 
     const scheduleRefresh = () => {
-      if (debounceMs <= 0) {
-        void onRefresh();
-        return;
-      }
-
       if (debounceTimer) clearTimeout(debounceTimer);
+      const sinceLast = Date.now() - lastRefreshAt;
+      const wait = Math.max(debounceMs, MIN_REFRESH_INTERVAL_MS - sinceLast);
       debounceTimer = setTimeout(() => {
+        lastRefreshAt = Date.now();
         void onRefresh();
-      }, debounceMs);
+      }, wait);
     };
+
+    // Server-side filter by date when possible so other dates' edits never reach this client.
+    const attendanceFilter = exactDate ? `date=eq.${exactDate}` : undefined;
 
     const attendanceChannel = supabase
       .channel(`${channelKey}:${Date.now()}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "attendance" },
+        { event: "*", schema: "public", table: "attendance", ...(attendanceFilter ? { filter: attendanceFilter } : {}) },
         (payload: any) => {
           const record = payload.new ?? payload.old ?? {};
           const recordDate = record.date as string | undefined;
