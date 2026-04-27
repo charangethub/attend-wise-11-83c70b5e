@@ -65,6 +65,9 @@ export function usePageDataset(pageName: string): UsePageDatasetResult {
   // Listen for mapping changes
   useEffect(() => {
     const channelName = `page-dataset-${pageName}`;
+    // Remove any pre-existing channel with this name to avoid
+    // "cannot add postgres_changes callbacks after subscribe()" on remount.
+    supabase.getChannels().filter((c: any) => c.topic === `realtime:${channelName}`).forEach((c) => supabase.removeChannel(c));
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", { event: "*", schema: "public", table: "page_dataset_mapping" }, () => {

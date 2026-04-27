@@ -65,8 +65,10 @@ export function useAttendanceAutoRefresh({
     // Server-side filter by date when possible so other dates' edits never reach this client.
     const attendanceFilter = exactDate ? `date=eq.${exactDate}` : undefined;
 
+    const channelName = `attendance-refresh:${channelKey}`;
+    supabase.getChannels().filter((c: any) => c.topic === `realtime:${channelName}`).forEach((c) => supabase.removeChannel(c));
     const attendanceChannel = supabase
-      .channel(`attendance-refresh:${channelKey}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "attendance", ...(attendanceFilter ? { filter: attendanceFilter } : {}) },
