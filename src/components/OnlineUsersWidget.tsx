@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { Wifi, WifiOff } from "lucide-react";
@@ -6,28 +7,27 @@ import { Wifi, WifiOff } from "lucide-react";
 const ONLINE_THRESHOLD_MS = 60_000; // 60s
 
 const OnlineUsersWidget = () => {
-  const [users, setUsers] = useState<any[]>([]);
-
-  const fetchPresence = async () => {
-    const { data } = await supabase.from("user_presence").select("*");
-    setUsers(data ?? []);
-  };
+  const queryClient = useQueryClient();
+  const { data: users = [] } = useQuery({
+    queryKey: ["user-presence"],
+    queryFn: async () => {
+      const { data } = await supabase.from("user_presence").select("*");
+      return data ?? [];
+    },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
 
   useEffect(() => {
-    fetchPresence();
-    // Realtime subscription already pushes updates; keep a slow safety poll only.
-    const interval = setInterval(fetchPresence, 60_000);
-
-    // Realtime subscription
     const channel = supabase
       .channel("presence-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, () => {
-        fetchPresence();
+        queryClient.invalidateQueries({ queryKey: ["user-presence"] });
       })
       .subscribe();
 
-    return () => { clearInterval(interval); supabase.removeChannel(channel); };
-  }, []);
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
 
   const now = Date.now();
   const sortedUsers = [...users].sort((a, b) => {
