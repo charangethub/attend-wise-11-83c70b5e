@@ -271,10 +271,10 @@ const AttendanceDashboard = () => {
                 userId: user.id,
                 userEmail: user.email ?? "",
                 userName: user.user_metadata?.full_name ?? user.email ?? "",
-                action: "attendance marked",
+                action: `${SESSION} attendance marked`,
                 studentName: studentMap.get(sid) ?? "",
                 studentId: sid,
-                details: { date: selectedDate, status: attendanceSnapshot[sid], remark: remarksSnapshot[sid] || "" },
+                details: { date: selectedDate, session: SESSION, status: attendanceSnapshot[sid], remark: remarksSnapshot[sid] || "" },
               })
             )
           );
