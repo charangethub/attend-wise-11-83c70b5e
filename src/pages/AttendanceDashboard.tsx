@@ -164,15 +164,28 @@ const AttendanceDashboard = () => {
 
   useEffect(() => {
     if (!draftStorageKey || loading || loadedDraftKeyRef.current !== draftStorageKey) return;
-    const hasDraftChanges =
-      JSON.stringify(attendance) !== JSON.stringify(originalAttendance) ||
-      JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
 
-    if (!hasDraftChanges) {
-      sessionStorage.removeItem(draftStorageKey);
-      return;
-    }
-    sessionStorage.setItem(draftStorageKey, JSON.stringify({ attendance, remarks } satisfies AttendanceDraft));
+    // Debounced + shallow diff: avoids per-keystroke JSON.stringify of large maps.
+    const handle = setTimeout(() => {
+      const shallowEqual = (a: Record<string, string>, b: Record<string, string>) => {
+        const ak = Object.keys(a);
+        const bk = Object.keys(b);
+        if (ak.length !== bk.length) return false;
+        for (const k of ak) if (a[k] !== b[k]) return false;
+        return true;
+      };
+      const hasDraftChanges =
+        !shallowEqual(attendance, originalAttendance) ||
+        !shallowEqual(remarks, originalRemarks);
+
+      if (!hasDraftChanges) {
+        sessionStorage.removeItem(draftStorageKey);
+        return;
+      }
+      sessionStorage.setItem(draftStorageKey, JSON.stringify({ attendance, remarks } satisfies AttendanceDraft));
+    }, 400);
+
+    return () => clearTimeout(handle);
   }, [draftStorageKey, loading, attendance, remarks, originalAttendance, originalRemarks]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
