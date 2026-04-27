@@ -15,7 +15,8 @@ const OnlineUsersWidget = () => {
 
   useEffect(() => {
     fetchPresence();
-    const interval = setInterval(fetchPresence, 15_000);
+    // Realtime subscription already pushes updates; keep a slow safety poll only.
+    const interval = setInterval(fetchPresence, 60_000);
 
     // Realtime subscription
     const channel = supabase
