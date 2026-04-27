@@ -54,41 +54,41 @@ export async function fetchAttendanceForStudents<T = any>({
 }: FetchAttendanceOptions): Promise<T[]> {
   if (studentIds.length === 0) return [];
 
-  const chunkResults = await Promise.all(
-    chunkArray(studentIds, STUDENT_ID_CHUNK_SIZE).map(async (idChunk) => {
-      const rows: T[] = [];
-      let from = 0;
+  const chunkResults: T[][] = [];
 
-      while (true) {
-        let query: any = supabase
-          .from("attendance")
-          .select(columns)
-          .in("student_id", idChunk)
-          .order("date", { ascending: true })
-          .order("student_id", { ascending: true })
-          .order("session", { ascending: true })
-          .range(from, from + ATTENDANCE_PAGE_SIZE - 1);
+  for (const idChunk of chunkArray(studentIds, STUDENT_ID_CHUNK_SIZE)) {
+    const rows: T[] = [];
+    let from = 0;
 
-        if (exactDate) query = query.eq("date", exactDate);
-        if (fromDate) query = query.gte("date", fromDate);
-        if (toDate) query = query.lte("date", toDate);
-        if (session) query = query.eq("session", session);
-        if (statuses?.length) query = query.in("status", statuses);
+    while (true) {
+      let query: any = supabase
+        .from("attendance")
+        .select(columns)
+        .in("student_id", idChunk)
+        .order("date", { ascending: true })
+        .order("student_id", { ascending: true })
+        .order("session", { ascending: true })
+        .range(from, from + ATTENDANCE_PAGE_SIZE - 1);
 
-        const { data, error } = await query;
+      if (exactDate) query = query.eq("date", exactDate);
+      if (fromDate) query = query.gte("date", fromDate);
+      if (toDate) query = query.lte("date", toDate);
+      if (session) query = query.eq("session", session);
+      if (statuses?.length) query = query.in("status", statuses);
 
-        if (error) throw error;
-        if (!data?.length) break;
+      const { data, error } = await query;
 
-        rows.push(...(data as T[]));
+      if (error) throw error;
+      if (!data?.length) break;
 
-        if (data.length < ATTENDANCE_PAGE_SIZE) break;
-        from += ATTENDANCE_PAGE_SIZE;
-      }
+      rows.push(...(data as T[]));
 
-      return rows;
-    }),
-  );
+      if (data.length < ATTENDANCE_PAGE_SIZE) break;
+      from += ATTENDANCE_PAGE_SIZE;
+    }
+
+    chunkResults.push(rows);
+  }
 
   return chunkResults.flat();
 }

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-const HEARTBEAT_INTERVAL = 30_000; // 30s
+const HEARTBEAT_INTERVAL = 120_000; // 2 min
 
 export function usePresence() {
   const { user } = useAuth();
@@ -11,6 +11,7 @@ export function usePresence() {
     if (!user) return;
 
     const upsert = async () => {
+      if (document.hidden) return;
       await supabase.from("user_presence").upsert(
         {
           user_id: user.id,
