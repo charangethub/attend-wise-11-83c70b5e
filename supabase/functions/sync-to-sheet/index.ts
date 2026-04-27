@@ -56,7 +56,27 @@ Deno.serve(async (req) => {
       .eq('date', date);
 
     const activeStudentIds = new Set((studentsData ?? []).map((s: any) => s.id));
-    const filteredAttData = (attData ?? []).filter((a: any) => activeStudentIds.has(a.student_id));
+    // Build a quick lookup so we can attach a stable identifier (user_id_vedantu)
+    // to every attendance record. The Apps Script uses this as the dedup key —
+    // without it, students with an empty roll_no get duplicated on every sync.
+    const studentById = new Map<string, any>();
+    for (const s of studentsData ?? []) studentById.set(s.id, s);
+
+    const filteredAttData = (attData ?? [])
+      .filter((a: any) => activeStudentIds.has(a.student_id))
+      .map((a: any) => {
+        const s = studentById.get(a.student_id) ?? a.students ?? {};
+        const userIdVedantu = String(s.user_id_vedantu ?? a.students?.user_id_vedantu ?? '').trim();
+        const rollNo = String(s.roll_no ?? a.students?.roll_no ?? '').trim();
+        return {
+          ...a,
+          // Top-level stable keys for Apps Script dedup. Prefer user_id_vedantu;
+          // fall back to roll_no; finally fall back to the Supabase student UUID.
+          user_id_vedantu: userIdVedantu,
+          roll_no: rollNo,
+          dedup_key: userIdVedantu || rollNo || a.student_id,
+        };
+      });
 
     const absentees = filteredAttData.filter((a: any) => a.status === 'A' || a.status === 'L');
     const presentCount = filteredAttData.filter((a: any) => a.status === 'P').length;
