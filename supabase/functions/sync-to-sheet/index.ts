@@ -62,21 +62,43 @@ Deno.serve(async (req) => {
     const studentById = new Map<string, any>();
     for (const s of studentsData ?? []) studentById.set(s.id, s);
 
-    const filteredAttData = (attData ?? [])
-      .filter((a: any) => activeStudentIds.has(a.student_id))
-      .map((a: any) => {
-        const s = studentById.get(a.student_id) ?? a.students ?? {};
-        const userIdVedantu = String(s.user_id_vedantu ?? a.students?.user_id_vedantu ?? '').trim();
-        const rollNo = String(s.roll_no ?? a.students?.roll_no ?? '').trim();
-        return {
-          ...a,
-          // Top-level stable keys for Apps Script dedup. Prefer user_id_vedantu;
-          // fall back to roll_no; finally fall back to the Supabase student UUID.
-          user_id_vedantu: userIdVedantu,
+    const attendanceByStableKey = new Map<string, any>();
+    for (const a of attData ?? []) {
+      if (!activeStudentIds.has(a.student_id)) continue;
+
+      const s = studentById.get(a.student_id) ?? a.students ?? {};
+      const userIdVedantu = String(s.user_id_vedantu ?? a.students?.user_id_vedantu ?? '').trim();
+      const rollNo = String(s.roll_no ?? a.students?.roll_no ?? '').trim();
+      const dedupKey = userIdVedantu || rollNo || a.student_id;
+      const session = String(a.session ?? 'AM').trim() || 'AM';
+      const stableRecordKey = `${dedupKey}::${a.date}::${session}`;
+
+      attendanceByStableKey.set(stableRecordKey, {
+        ...a,
+        session,
+        // Top-level stable keys for Apps Script dedup. Prefer user_id_vedantu;
+        // fall back to roll_no; finally fall back to the Supabase student UUID.
+        user_id: userIdVedantu,
+        user_id_vedantu: userIdVedantu,
+        roll_no: rollNo,
+        dedup_key: dedupKey,
+        student_key: dedupKey,
+        match_key: dedupKey,
+        student_identifier: dedupKey,
+        students: {
+          ...(a.students ?? {}),
+          ...s,
+          user_id: userIdVedantu,
           roll_no: rollNo,
-          dedup_key: userIdVedantu || rollNo || a.student_id,
-        };
+          user_id_vedantu: userIdVedantu,
+          dedup_key: dedupKey,
+          student_key: dedupKey,
+          match_key: dedupKey,
+          student_identifier: dedupKey,
+        },
       });
+    }
+    const filteredAttData = Array.from(attendanceByStableKey.values());
 
     const absentees = filteredAttData.filter((a: any) => a.status === 'A' || a.status === 'L');
     const presentCount = filteredAttData.filter((a: any) => a.status === 'P').length;
