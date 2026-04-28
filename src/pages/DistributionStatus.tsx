@@ -27,9 +27,11 @@ const ITEM_LABELS: Record<string, string> = {
   T_SHIRT: "T-SHIRT", TATVA: "TATVA", VDPP: "VDPP"
 };
 
-// Items where multiple units are commonly given to a single student
-const MULTI_QTY_ITEMS = new Set(["T_SHIRT"]);
-const DEFAULT_MULTI_QTY = 2;
+// Each cell click records exactly 1 unit. Multi-unit distribution is only
+// possible via the CSV upload (explicit "GIVEN:N" syntax) — never via
+// auto-doubling on a single click. This prevents T-shirts (or any item)
+// from being silently counted twice per click.
+const DEFAULT_QTY_PER_CLICK = 1;
 
 const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 const SIZED_ITEMS = new Set(["T_SHIRT"]);
@@ -215,8 +217,7 @@ const DistributionStatus = () => {
     return counts;
   }, [distMap]);
 
-  const getQtyForItem = (itemType: string) =>
-    MULTI_QTY_ITEMS.has(itemType) ? DEFAULT_MULTI_QTY : 1;
+  const getQtyForItem = (_itemType: string) => DEFAULT_QTY_PER_CLICK;
 
   /**
    * Toggle / set a status. For T-shirts, `size` is required when going to GIVEN.
@@ -305,8 +306,8 @@ const DistributionStatus = () => {
   const downloadTemplate = () => {
     const header = ["user_id_vedantu", "roll_no", ...ITEM_TYPES.map(t => t)].join(",");
     const sampleRow = ["VED-001", "ROLL001", ...ITEM_TYPES.map(t => {
-      if (t === "T_SHIRT") return "GIVEN:2:M";
-      return MULTI_QTY_ITEMS.has(t) ? "GIVEN:2" : "GIVEN";
+      if (t === "T_SHIRT") return "GIVEN:2:M"; // T-shirts may be given in pairs via CSV
+      return "GIVEN";
     })].join(",");
     const csv = `${header}\n${sampleRow}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
@@ -360,17 +361,29 @@ const DistributionStatus = () => {
         });
       }
 
-      if (upserts.length === 0) {
+      // Dedupe by (student_id + item_type + size) — last one wins.
+      // Prevents Postgres "ON CONFLICT cannot affect row a second time" errors.
+      const dedup = new Map<string, any>();
+      upserts.forEach((u) => {
+        const k = `${u.student_id}::${u.item_type}::${u.size || ""}`;
+        dedup.set(k, u);
+      });
+      const finalUpserts = Array.from(dedup.values());
+
+      if (finalUpserts.length === 0) {
         console.warn("Distribution CSV: no valid rows.", skippedReasons);
         toast.error(`No valid rows found. ${skippedReasons.slice(0, 3).join(" • ")}`);
         setCsvUploading(false); return;
       }
 
-      for (let i = 0; i < upserts.length; i += 50) {
-        await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type,size" });
+      for (let i = 0; i < finalUpserts.length; i += 50) {
+        const { error } = await supabase
+          .from("distribution_status" as any)
+          .upsert(finalUpserts.slice(i, i + 50), { onConflict: "student_id,item_type,size" });
+        if (error) throw error;
       }
 
-      toast.success(`Uploaded ${upserts.length} records (${skippedReasons.length} skipped)`);
+      toast.success(`Uploaded ${finalUpserts.length} records (${skippedReasons.length} skipped)`);
       setCsvUploadOpen(false);
       fetchData();
     } catch (err: any) { toast.error("Upload failed: " + err.message); }
@@ -510,7 +523,7 @@ const DistributionStatus = () => {
                     const size = row?.size ?? null;
                     if (statusFilterType === "given" && status !== "GIVEN") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     if (statusFilterType === "pending" && status !== "PENDING") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
-                    const showQty = status === "GIVEN" && (MULTI_QTY_ITEMS.has(t) || qty > 1);
+                    const showQty = status === "GIVEN" && qty > 1;
                     const isSized = SIZED_ITEMS.has(t);
                     const pickerKey = `${s.id}:${t}`;
                     const isPickerOpen = openSizePicker === pickerKey;
