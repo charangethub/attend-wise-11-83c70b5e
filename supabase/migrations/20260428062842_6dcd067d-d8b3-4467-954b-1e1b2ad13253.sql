@@ -1,0 +1,2 @@
+-- Remove duplicate trigger on distribution_status that was causing inventory to be deducted twice on every status change
+DROP TRIGGER IF EXISTS sync_inventory_on_distribution_trigger ON public.distribution_status;
