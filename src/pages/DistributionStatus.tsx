@@ -27,9 +27,11 @@ const ITEM_LABELS: Record<string, string> = {
   T_SHIRT: "T-SHIRT", TATVA: "TATVA", VDPP: "VDPP"
 };
 
-// Items where multiple units are commonly given to a single student
-const MULTI_QTY_ITEMS = new Set(["T_SHIRT"]);
-const DEFAULT_MULTI_QTY = 2;
+// Each cell click records exactly 1 unit. Multi-unit distribution is only
+// possible via the CSV upload (explicit "GIVEN:N" syntax) — never via
+// auto-doubling on a single click. This prevents T-shirts (or any item)
+// from being silently counted twice per click.
+const DEFAULT_QTY_PER_CLICK = 1;
 
 const TSHIRT_SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 const SIZED_ITEMS = new Set(["T_SHIRT"]);
@@ -215,8 +217,7 @@ const DistributionStatus = () => {
     return counts;
   }, [distMap]);
 
-  const getQtyForItem = (itemType: string) =>
-    MULTI_QTY_ITEMS.has(itemType) ? DEFAULT_MULTI_QTY : 1;
+  const getQtyForItem = (_itemType: string) => DEFAULT_QTY_PER_CLICK;
 
   /**
    * Toggle / set a status. For T-shirts, `size` is required when going to GIVEN.
@@ -305,8 +306,8 @@ const DistributionStatus = () => {
   const downloadTemplate = () => {
     const header = ["user_id_vedantu", "roll_no", ...ITEM_TYPES.map(t => t)].join(",");
     const sampleRow = ["VED-001", "ROLL001", ...ITEM_TYPES.map(t => {
-      if (t === "T_SHIRT") return "GIVEN:2:M";
-      return MULTI_QTY_ITEMS.has(t) ? "GIVEN:2" : "GIVEN";
+      if (t === "T_SHIRT") return "GIVEN:2:M"; // T-shirts may be given in pairs via CSV
+      return "GIVEN";
     })].join(",");
     const csv = `${header}\n${sampleRow}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
