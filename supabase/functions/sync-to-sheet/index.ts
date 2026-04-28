@@ -78,19 +78,23 @@ Deno.serve(async (req) => {
         session,
         // Top-level stable keys for Apps Script dedup. Prefer user_id_vedantu;
         // fall back to roll_no; finally fall back to the Supabase student UUID.
+        user_id: userIdVedantu,
         user_id_vedantu: userIdVedantu,
         roll_no: rollNo,
         dedup_key: dedupKey,
         student_key: dedupKey,
         match_key: dedupKey,
+        student_identifier: dedupKey,
         students: {
           ...(a.students ?? {}),
           ...s,
+          user_id: userIdVedantu,
           roll_no: rollNo,
           user_id_vedantu: userIdVedantu,
           dedup_key: dedupKey,
           student_key: dedupKey,
           match_key: dedupKey,
+          student_identifier: dedupKey,
         },
       });
     }
