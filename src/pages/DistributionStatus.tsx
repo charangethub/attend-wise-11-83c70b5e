@@ -511,7 +511,7 @@ const DistributionStatus = () => {
                     const size = row?.size ?? null;
                     if (statusFilterType === "given" && status !== "GIVEN") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
                     if (statusFilterType === "pending" && status !== "PENDING") return <td key={t} className="px-3 py-2.5 text-center text-muted-foreground">—</td>;
-                    const showQty = status === "GIVEN" && (MULTI_QTY_ITEMS.has(t) || qty > 1);
+                    const showQty = status === "GIVEN" && qty > 1;
                     const isSized = SIZED_ITEMS.has(t);
                     const pickerKey = `${s.id}:${t}`;
                     const isPickerOpen = openSizePicker === pickerKey;
