@@ -361,17 +361,29 @@ const DistributionStatus = () => {
         });
       }
 
-      if (upserts.length === 0) {
+      // Dedupe by (student_id + item_type + size) — last one wins.
+      // Prevents Postgres "ON CONFLICT cannot affect row a second time" errors.
+      const dedup = new Map<string, any>();
+      upserts.forEach((u) => {
+        const k = `${u.student_id}::${u.item_type}::${u.size || ""}`;
+        dedup.set(k, u);
+      });
+      const finalUpserts = Array.from(dedup.values());
+
+      if (finalUpserts.length === 0) {
         console.warn("Distribution CSV: no valid rows.", skippedReasons);
         toast.error(`No valid rows found. ${skippedReasons.slice(0, 3).join(" • ")}`);
         setCsvUploading(false); return;
       }
 
-      for (let i = 0; i < upserts.length; i += 50) {
-        await supabase.from("distribution_status" as any).upsert(upserts.slice(i, i + 50), { onConflict: "student_id,item_type,size" });
+      for (let i = 0; i < finalUpserts.length; i += 50) {
+        const { error } = await supabase
+          .from("distribution_status" as any)
+          .upsert(finalUpserts.slice(i, i + 50), { onConflict: "student_id,item_type,size" });
+        if (error) throw error;
       }
 
-      toast.success(`Uploaded ${upserts.length} records (${skippedReasons.length} skipped)`);
+      toast.success(`Uploaded ${finalUpserts.length} records (${skippedReasons.length} skipped)`);
       setCsvUploadOpen(false);
       fetchData();
     } catch (err: any) { toast.error("Upload failed: " + err.message); }
