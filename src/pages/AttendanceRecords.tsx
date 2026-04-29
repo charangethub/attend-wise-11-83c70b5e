@@ -178,9 +178,15 @@ const AttendanceRecords = () => {
   const filteredStudents = useMemo(() => students.filter((s: any) => {
     if (enrollmentFilter !== "all" && s.enrollment_status !== enrollmentFilter) return false;
     if (classroomFilter !== "all" && s.classroom_name !== classroomFilter) return false;
-    if (searchQuery) { const q = searchQuery.toLowerCase(); if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false; }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      const matchesName = s.student_name?.toLowerCase().includes(q);
+      const matchesRoll = s.roll_no?.toLowerCase().includes(q);
+      const matchesUserId = isOwner && s.user_id_vedantu?.toLowerCase().includes(q);
+      if (!matchesName && !matchesRoll && !matchesUserId) return false;
+    }
     return true;
-  }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery]);
+  }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, isOwner]);
 
   const getStudentSummary = (studentId: string) => {
     const days = attMap[studentId] || {};
@@ -231,7 +237,7 @@ const AttendanceRecords = () => {
         <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v))}><SelectTrigger className="w-24"><SelectValue /></SelectTrigger><SelectContent>{years.map((y) => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent></Select>
         <Select value={classroomFilter} onValueChange={setClassroomFilter}><SelectTrigger className="w-48"><SelectValue placeholder="All Classrooms" /></SelectTrigger><SelectContent><SelectItem value="all">All Classrooms</SelectItem>{classrooms.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select>
         <Select value={enrollmentFilter} onValueChange={setEnrollmentFilter}><SelectTrigger className="w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All Enrollment</SelectItem><SelectItem value="ENROLLED">ENROLLED</SelectItem><SelectItem value="FORFEITED">FORFEITED</SelectItem></SelectContent></Select>
-        <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder="Search..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
+        <div className="relative flex-1 min-w-[200px]"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><Input placeholder={isOwner ? "Search by name, roll no, or user ID..." : "Search by name or roll no..."} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9" /></div>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
