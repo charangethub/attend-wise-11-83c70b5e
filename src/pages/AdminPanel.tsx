@@ -62,6 +62,7 @@ const AdminPanel = () => {
   const [editSyncTarget, setEditSyncTarget] = useState<SyncTarget | null>(null);
   const [newTargetLabel, setNewTargetLabel] = useState("");
   const [newTargetUrl, setNewTargetUrl] = useState("");
+  const [newTargetPurpose, setNewTargetPurpose] = useState<"attendance" | "marks">("attendance");
   const [savingTarget, setSavingTarget] = useState(false);
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
   const [restoringAttendance, setRestoringAttendance] = useState(false);
@@ -219,13 +220,13 @@ const AdminPanel = () => {
     setSavingTarget(true);
     try {
       if (editSyncTarget) {
-        await supabase.from("sync_targets").update({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any).eq("id", editSyncTarget.id);
+        await supabase.from("sync_targets").update({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim(), purpose: newTargetPurpose } as any).eq("id", editSyncTarget.id);
         toast.success("Target updated");
       } else {
-        await supabase.from("sync_targets").insert({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any);
+        await supabase.from("sync_targets").insert({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim(), purpose: newTargetPurpose } as any);
         toast.success("Target added");
       }
-      setAddSyncTargetOpen(false); setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl("");
+      setAddSyncTargetOpen(false); setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl(""); setNewTargetPurpose("attendance");
       fetchSyncTargets();
     } catch (err: any) { toast.error("Failed: " + err.message); }
     setSavingTarget(false);
