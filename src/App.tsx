@@ -24,6 +24,12 @@ const StudentCalendarReport = lazy(() => import("./pages/StudentCalendarReport")
 const PermissionEntry = lazy(() => import("./pages/PermissionEntry"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const DistributionStatus = lazy(() => import("./pages/DistributionStatus"));
+const ResultsDashboard = lazy(() => import("./pages/ResultsDashboard"));
+const StudentDetail = lazy(() => import("./pages/StudentDetail"));
+const QuarterlyMarks = lazy(() => import("./pages/QuarterlyMarks"));
+const HalfYearlyMarks = lazy(() => import("./pages/HalfYearlyMarks"));
+const PreFinal1Marks = lazy(() => import("./pages/PreFinal1Marks"));
+const PreFinal2Marks = lazy(() => import("./pages/PreFinal2Marks"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,6 +71,12 @@ const App = () => (
               <Route path="/permissions" element={<ProtectedRoute requiredPage="Permission Entry"><SidebarLayout><PermissionEntry /></SidebarLayout></ProtectedRoute>} />
               <Route path="/inventory" element={<ProtectedRoute requiredPage="Inventory"><SidebarLayout><Inventory /></SidebarLayout></ProtectedRoute>} />
               <Route path="/distribution-status" element={<ProtectedRoute requiredPage="Distribution Status"><SidebarLayout><DistributionStatus /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/results" element={<ProtectedRoute requiredPage="Results Dashboard"><SidebarLayout><ResultsDashboard /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/results/student/:userId" element={<ProtectedRoute requiredPage="Results Dashboard"><SidebarLayout><StudentDetail /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/quarterly" element={<ProtectedRoute requiredPage="Quarterly Marks"><SidebarLayout><QuarterlyMarks /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/half-yearly" element={<ProtectedRoute requiredPage="Half Yearly Marks"><SidebarLayout><HalfYearlyMarks /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/pre-final-1" element={<ProtectedRoute requiredPage="Pre-Final 1 Marks"><SidebarLayout><PreFinal1Marks /></SidebarLayout></ProtectedRoute>} />
+              <Route path="/pre-final-2" element={<ProtectedRoute requiredPage="Pre-Final 2 Marks"><SidebarLayout><PreFinal2Marks /></SidebarLayout></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

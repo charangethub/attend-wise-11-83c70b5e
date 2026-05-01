@@ -62,6 +62,7 @@ const AdminPanel = () => {
   const [editSyncTarget, setEditSyncTarget] = useState<SyncTarget | null>(null);
   const [newTargetLabel, setNewTargetLabel] = useState("");
   const [newTargetUrl, setNewTargetUrl] = useState("");
+  const [newTargetPurpose, setNewTargetPurpose] = useState<"attendance" | "marks">("attendance");
   const [savingTarget, setSavingTarget] = useState(false);
   const [testingTarget, setTestingTarget] = useState<string | null>(null);
   const [restoringAttendance, setRestoringAttendance] = useState(false);
@@ -219,13 +220,13 @@ const AdminPanel = () => {
     setSavingTarget(true);
     try {
       if (editSyncTarget) {
-        await supabase.from("sync_targets").update({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any).eq("id", editSyncTarget.id);
+        await supabase.from("sync_targets").update({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim(), purpose: newTargetPurpose } as any).eq("id", editSyncTarget.id);
         toast.success("Target updated");
       } else {
-        await supabase.from("sync_targets").insert({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim() } as any);
+        await supabase.from("sync_targets").insert({ label: newTargetLabel.trim(), apps_script_url: newTargetUrl.trim(), purpose: newTargetPurpose } as any);
         toast.success("Target added");
       }
-      setAddSyncTargetOpen(false); setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl("");
+      setAddSyncTargetOpen(false); setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl(""); setNewTargetPurpose("attendance");
       fetchSyncTargets();
     } catch (err: any) { toast.error("Failed: " + err.message); }
     setSavingTarget(false);
@@ -310,10 +311,19 @@ const AdminPanel = () => {
       {/* Add/Edit Sync Target Dialog */}
       <Dialog open={addSyncTargetOpen} onOpenChange={(open) => { setAddSyncTargetOpen(open); if (!open) { setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl(""); } }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editSyncTarget ? "Edit Sync Target" : "Add Sync Target"}</DialogTitle><DialogDescription>Enter the Apps Script Web App URL for pushing attendance data.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editSyncTarget ? "Edit Sync Target" : "Add Sync Target"}</DialogTitle><DialogDescription>Configure an Apps Script Web App URL. Use "Attendance Data" for attendance pushes, "Exam Marks Data" for quarterly/half-yearly/pre-final marks.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Label <span className="text-destructive">*</span></Label><Input placeholder="e.g. Main Attendance Sheet" value={newTargetLabel} onChange={(e) => setNewTargetLabel(e.target.value)} /></div>
             <div className="space-y-2"><Label>Apps Script URL <span className="text-destructive">*</span></Label><Input placeholder="https://script.google.com/macros/s/.../exec" value={newTargetUrl} onChange={(e) => setNewTargetUrl(e.target.value)} className="text-xs" /></div>
+            <div className="space-y-2"><Label>Purpose <span className="text-destructive">*</span></Label>
+              <Select value={newTargetPurpose} onValueChange={(v) => setNewTargetPurpose(v as "attendance" | "marks")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="attendance">📅 Attendance Data</SelectItem>
+                  <SelectItem value="marks">📋 Exam Marks Data</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => { setAddSyncTargetOpen(false); setEditSyncTarget(null); }}>Cancel</Button><Button onClick={saveSyncTarget} disabled={savingTarget}>{savingTarget ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Saving...</> : (editSyncTarget ? "Save Changes" : "Add Target")}</Button></DialogFooter>
         </DialogContent>
@@ -374,10 +384,20 @@ const AdminPanel = () => {
               <Button size="sm" onClick={() => setAddSyncTargetOpen(true)} className="gap-1 h-8 text-xs"><Plus className="h-3.5 w-3.5" /> Add Target</Button>
             </div>
             {syncTargets.length === 0 && <p className="text-xs text-muted-foreground">No sync targets. Add an Apps Script URL to enable push sync.</p>}
-            {syncTargets.map((t) => (
+            {(["attendance", "marks"] as const).map((purpose) => {
+              const list = syncTargets.filter(t => (t.purpose ?? "attendance") === purpose);
+              if (list.length === 0) return null;
+              const heading = purpose === "attendance" ? "📅 Attendance Sync Targets" : "📋 Marks Sync Targets";
+              const helper = purpose === "attendance"
+                ? "These URLs receive attendance records when synced from the attendance dashboards."
+                : "These URLs receive quarterly, half-yearly, and pre-final marks when a teacher saves marks for a student.";
+              return (
+                <div key={purpose} className="space-y-2">
+                  <div><h5 className="text-xs font-bold text-foreground">{heading}</h5><p className="text-[11px] text-muted-foreground">{helper}</p></div>
+                  {list.map((t) => (
               <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">{t.label}</p>
+                  <p className="text-sm font-semibold">{t.label} <span className="ml-1 text-[10px] uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">{t.purpose ?? "attendance"}</span></p>
                   <p className="text-xs text-muted-foreground truncate">{t.apps_script_url.slice(0, 70)}...</p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -395,11 +415,14 @@ const AdminPanel = () => {
                     }}>
                     {testingTarget === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Test
                   </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditSyncTarget(t); setNewTargetLabel(t.label); setNewTargetUrl(t.apps_script_url); setAddSyncTargetOpen(true); }}><Pencil className="h-3 w-3" /></Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditSyncTarget(t); setNewTargetLabel(t.label); setNewTargetUrl(t.apps_script_url); setNewTargetPurpose((t.purpose === "marks" ? "marks" : "attendance")); setAddSyncTargetOpen(true); }}><Pencil className="h-3 w-3" /></Button>
                   <Button variant="outline" size="sm" className="h-7 text-xs text-destructive border-destructive/30" onClick={async () => { await supabase.from("sync_targets").delete().eq("id", t.id); fetchSyncTargets(); toast.success("Removed"); }}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               </div>
-            ))}
+                  ))}
+                </div>
+              );
+            })}
             {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
@@ -450,7 +473,7 @@ const AdminPanel = () => {
           <div className="rounded-lg border border-border p-6">
             <div className="flex items-center gap-2 mb-4"><Settings className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Other Settings</h3></div>
             <div className="space-y-4">
-              {[{ key: "web_app_url", label: "Web App URL" }, { key: "linked_app_url_1", label: "Linked App 1 URL" }, { key: "linked_app_url_1_label", label: "Linked App 1 Label" }, { key: "linked_app_url_2", label: "Linked App 2 URL" }, { key: "linked_app_url_2_label", label: "Linked App 2 Label" }, { key: "auto_approve_google", label: "Auto-Approve Google Sign-ins (true/false)" }].map(({ key, label }) => (
+              {[{ key: "web_app_url", label: "Web App URL" }, { key: "linked_app_url_1", label: "Linked App 1 URL" }, { key: "linked_app_url_1_label", label: "Linked App 1 Label" }, { key: "linked_app_url_2", label: "Linked App 2 URL" }, { key: "linked_app_url_2_label", label: "Linked App 2 Label" }, { key: "auto_approve_google", label: "Auto-Approve Google Sign-ins (true/false)" }, { key: "results_sheet_gid", label: "Results Sheet Tab GID (e.g. 1074701588 — the gid number from your Google Sheet URL pointing to the Results tab)" }].map(({ key, label }) => (
                 <div key={key} className="space-y-1"><Label className="text-sm">{label}</Label><Input value={settings[key] ?? ""} onChange={(e) => setSettings(prev => ({ ...prev, [key]: e.target.value }))} className="text-sm" /></div>
               ))}
             </div>
