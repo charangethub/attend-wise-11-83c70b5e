@@ -229,6 +229,60 @@ export type Database = {
           },
         ]
       }
+      exam_marks: {
+        Row: {
+          classroom: string
+          created_at: string
+          created_by: string | null
+          curriculum: string
+          enrollment_status: string
+          exam_type: string
+          grade: string
+          id: string
+          max_marks: number
+          obtained_marks: number
+          roll_number: string
+          student_name: string
+          student_user_id: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          classroom?: string
+          created_at?: string
+          created_by?: string | null
+          curriculum?: string
+          enrollment_status?: string
+          exam_type: string
+          grade?: string
+          id?: string
+          max_marks?: number
+          obtained_marks?: number
+          roll_number?: string
+          student_name?: string
+          student_user_id: string
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          classroom?: string
+          created_at?: string
+          created_by?: string | null
+          curriculum?: string
+          enrollment_status?: string
+          exam_type?: string
+          grade?: string
+          id?: string
+          max_marks?: number
+          obtained_marks?: number
+          roll_number?: string
+          student_name?: string
+          student_user_id?: string
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       inventory_activity_logs: {
         Row: {
           action: string
