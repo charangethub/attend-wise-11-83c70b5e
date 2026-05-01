@@ -473,7 +473,7 @@ const AdminPanel = () => {
           <div className="rounded-lg border border-border p-6">
             <div className="flex items-center gap-2 mb-4"><Settings className="h-5 w-5 text-primary" /><h3 className="text-base font-bold">Other Settings</h3></div>
             <div className="space-y-4">
-              {[{ key: "web_app_url", label: "Web App URL" }, { key: "linked_app_url_1", label: "Linked App 1 URL" }, { key: "linked_app_url_1_label", label: "Linked App 1 Label" }, { key: "linked_app_url_2", label: "Linked App 2 URL" }, { key: "linked_app_url_2_label", label: "Linked App 2 Label" }, { key: "auto_approve_google", label: "Auto-Approve Google Sign-ins (true/false)" }].map(({ key, label }) => (
+              {[{ key: "web_app_url", label: "Web App URL" }, { key: "linked_app_url_1", label: "Linked App 1 URL" }, { key: "linked_app_url_1_label", label: "Linked App 1 Label" }, { key: "linked_app_url_2", label: "Linked App 2 URL" }, { key: "linked_app_url_2_label", label: "Linked App 2 Label" }, { key: "auto_approve_google", label: "Auto-Approve Google Sign-ins (true/false)" }, { key: "results_sheet_gid", label: "Results Sheet Tab GID (e.g. 1074701588 — the gid number from your Google Sheet URL pointing to the Results tab)" }].map(({ key, label }) => (
                 <div key={key} className="space-y-1"><Label className="text-sm">{label}</Label><Input value={settings[key] ?? ""} onChange={(e) => setSettings(prev => ({ ...prev, [key]: e.target.value }))} className="text-sm" /></div>
               ))}
             </div>
