@@ -108,7 +108,8 @@ Deno.serve(async (req) => {
     const { data: targets } = await supabase
       .from('sync_targets')
       .select('*')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .eq('purpose', 'attendance');
 
     // Legacy fallback
     const { data: legacySetting } = await supabase
