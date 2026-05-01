@@ -311,10 +311,19 @@ const AdminPanel = () => {
       {/* Add/Edit Sync Target Dialog */}
       <Dialog open={addSyncTargetOpen} onOpenChange={(open) => { setAddSyncTargetOpen(open); if (!open) { setEditSyncTarget(null); setNewTargetLabel(""); setNewTargetUrl(""); } }}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editSyncTarget ? "Edit Sync Target" : "Add Sync Target"}</DialogTitle><DialogDescription>Enter the Apps Script Web App URL for pushing attendance data.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editSyncTarget ? "Edit Sync Target" : "Add Sync Target"}</DialogTitle><DialogDescription>Configure an Apps Script Web App URL. Use "Attendance Data" for attendance pushes, "Exam Marks Data" for quarterly/half-yearly/pre-final marks.</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Label <span className="text-destructive">*</span></Label><Input placeholder="e.g. Main Attendance Sheet" value={newTargetLabel} onChange={(e) => setNewTargetLabel(e.target.value)} /></div>
             <div className="space-y-2"><Label>Apps Script URL <span className="text-destructive">*</span></Label><Input placeholder="https://script.google.com/macros/s/.../exec" value={newTargetUrl} onChange={(e) => setNewTargetUrl(e.target.value)} className="text-xs" /></div>
+            <div className="space-y-2"><Label>Purpose <span className="text-destructive">*</span></Label>
+              <Select value={newTargetPurpose} onValueChange={(v) => setNewTargetPurpose(v as "attendance" | "marks")}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="attendance">📅 Attendance Data</SelectItem>
+                  <SelectItem value="marks">📋 Exam Marks Data</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => { setAddSyncTargetOpen(false); setEditSyncTarget(null); }}>Cancel</Button><Button onClick={saveSyncTarget} disabled={savingTarget}>{savingTarget ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Saving...</> : (editSyncTarget ? "Save Changes" : "Add Target")}</Button></DialogFooter>
         </DialogContent>
