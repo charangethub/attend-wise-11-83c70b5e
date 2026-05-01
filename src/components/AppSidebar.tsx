@@ -1,7 +1,7 @@
 import {
   Users, LayoutDashboard, ClipboardCheck, AlertTriangle,
   BarChart3, FileText, Shield, LogOut, RefreshCw, ExternalLink, CalendarDays,
-  KeyRound, Package, Truck,
+  KeyRound, Package, Truck, ClipboardList, BookOpenCheck,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +27,11 @@ const mainItems = [
   { title: "Student Calendar", url: "/student-calendar", icon: CalendarDays },
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Distribution Status", url: "/distribution-status", icon: Truck },
+  { title: "Results Dashboard", url: "/results", icon: ClipboardList },
+  { title: "Quarterly Marks", url: "/quarterly", icon: BookOpenCheck },
+  { title: "Half Yearly Marks", url: "/half-yearly", icon: BookOpenCheck },
+  { title: "Pre-Final 1 Marks", url: "/pre-final-1", icon: BookOpenCheck },
+  { title: "Pre-Final 2 Marks", url: "/pre-final-2", icon: BookOpenCheck },
 ];
 
 export function AppSidebar() {
