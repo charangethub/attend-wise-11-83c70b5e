@@ -384,10 +384,20 @@ const AdminPanel = () => {
               <Button size="sm" onClick={() => setAddSyncTargetOpen(true)} className="gap-1 h-8 text-xs"><Plus className="h-3.5 w-3.5" /> Add Target</Button>
             </div>
             {syncTargets.length === 0 && <p className="text-xs text-muted-foreground">No sync targets. Add an Apps Script URL to enable push sync.</p>}
-            {syncTargets.map((t) => (
+            {(["attendance", "marks"] as const).map((purpose) => {
+              const list = syncTargets.filter(t => (t.purpose ?? "attendance") === purpose);
+              if (list.length === 0) return null;
+              const heading = purpose === "attendance" ? "📅 Attendance Sync Targets" : "📋 Marks Sync Targets";
+              const helper = purpose === "attendance"
+                ? "These URLs receive attendance records when synced from the attendance dashboards."
+                : "These URLs receive quarterly, half-yearly, and pre-final marks when a teacher saves marks for a student.";
+              return (
+                <div key={purpose} className="space-y-2">
+                  <div><h5 className="text-xs font-bold text-foreground">{heading}</h5><p className="text-[11px] text-muted-foreground">{helper}</p></div>
+                  {list.map((t) => (
               <div key={t.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/20 p-3">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold">{t.label}</p>
+                  <p className="text-sm font-semibold">{t.label} <span className="ml-1 text-[10px] uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">{t.purpose ?? "attendance"}</span></p>
                   <p className="text-xs text-muted-foreground truncate">{t.apps_script_url.slice(0, 70)}...</p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -405,11 +415,14 @@ const AdminPanel = () => {
                     }}>
                     {testingTarget === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Test
                   </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditSyncTarget(t); setNewTargetLabel(t.label); setNewTargetUrl(t.apps_script_url); setAddSyncTargetOpen(true); }}><Pencil className="h-3 w-3" /></Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setEditSyncTarget(t); setNewTargetLabel(t.label); setNewTargetUrl(t.apps_script_url); setNewTargetPurpose((t.purpose === "marks" ? "marks" : "attendance")); setAddSyncTargetOpen(true); }}><Pencil className="h-3 w-3" /></Button>
                   <Button variant="outline" size="sm" className="h-7 text-xs text-destructive border-destructive/30" onClick={async () => { await supabase.from("sync_targets").delete().eq("id", t.id); fetchSyncTargets(); toast.success("Removed"); }}><Trash2 className="h-3 w-3" /></Button>
                 </div>
               </div>
-            ))}
+                  ))}
+                </div>
+              );
+            })}
             {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
