@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, RefreshCw, Search, Info, ClipboardList } from "lucide-react";
+import { Loader2, RefreshCw, Search, Info, ClipboardList, Users, Trophy, Download } from "lucide-react";
 import { useResultsData } from "@/hooks/useResultsData";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { format } from "date-fns";
@@ -24,9 +24,34 @@ function pickField(info: Record<string, string>, ...keys: string[]): string {
 function performanceBadge(pct: number) {
   if (pct >= 90) return { label: "Excellent", cls: "bg-green-500/10 text-green-700 border-green-500/30" };
   if (pct >= 75) return { label: "Good", cls: "bg-purple-500/10 text-purple-700 border-purple-500/30" };
-  if (pct >= 50) return { label: "Average", cls: "bg-orange-500/10 text-orange-700 border-orange-500/30" };
-  if (pct < 35) return { label: "Below Average", cls: "bg-red-500/10 text-red-700 border-red-500/30" };
-  return { label: "Needs Improvement", cls: "bg-yellow-500/10 text-yellow-800 border-yellow-500/30" };
+  if (pct >= 50) return { label: "Average", cls: "bg-yellow-500/10 text-yellow-800 border-yellow-500/30" };
+  return { label: "Needs Improvement", cls: "bg-red-500/10 text-red-700 border-red-500/30" };
+}
+
+function getMaxFor(r: Record<string, string>): number {
+  const maxKey = Object.keys(r).find(k => k.toLowerCase() === 'max' || k.toLowerCase() === 'max total' || k.toLowerCase() === 'max marks');
+  if (maxKey) {
+    const v = parseFloat(r[maxKey]);
+    if (isFinite(v) && v > 0) return v;
+  }
+  // Sum subject-level "Max" sub-headers if present (e.g., "Physics Max")
+  let sum = 0;
+  for (const [k, v] of Object.entries(r)) {
+    if (/max/i.test(k)) {
+      const n = parseFloat(v);
+      if (isFinite(n)) sum += n;
+    }
+  }
+  return sum > 0 ? sum : 0;
+}
+
+function getTotalFor(r: Record<string, string>): number {
+  const totalKey = Object.keys(r).find(k => k.toLowerCase() === 'total' || k.toLowerCase() === 'total marks');
+  if (totalKey) {
+    const v = parseFloat(r[totalKey]);
+    if (isFinite(v)) return v;
+  }
+  return NaN;
 }
 
 export default function ResultsDashboard() {
@@ -51,8 +76,7 @@ export default function ResultsDashboard() {
       const t = testNames[i];
       const has = students.some(s => {
         const r = s.results[t] ?? {};
-        const totalKey = Object.keys(r).find(k => k.toLowerCase() === 'total') ?? Object.keys(r)[0];
-        return totalKey ? parseFloat(r[totalKey]) > 0 : false;
+        return getTotalFor(r) > 0;
       });
       if (has) return t;
     }
@@ -78,22 +102,25 @@ export default function ResultsDashboard() {
 
   // Category-wise performance: { JEE/NEET × Grade 11/12 }
   const categoryStats = useMemo(() => {
-    if (!activeTest) return [] as { key: string; curr: string; grade: string; avg: number; max: number; topper: { name: string; score: number } | null; count: number }[];
-    const groups = new Map<string, { curr: string; grade: string; scores: { name: string; score: number; max: number }[] }>();
+    if (!activeTest) return [] as { key: string; curr: string; grade: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[];
+    const groups = new Map<string, { curr: string; grade: string; scores: { name: string; score: number; max: number; userId: string }[] }>();
     for (const s of students) {
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       const grade = pickField(s.info, "Grade");
       const name = pickField(s.info, "Student Name", "Name");
+      const uid = pickField(s.info, "User ID", "user_id_vedantu");
       if (!curr || !grade) continue;
       const r = s.results[activeTest] ?? {};
-      const totalKey = Object.keys(r).find(k => k.toLowerCase() === 'total') ?? Object.keys(r)[0];
-      const maxKey = Object.keys(r).find(k => k.toLowerCase() === 'max');
-      const score = totalKey ? parseFloat(r[totalKey]) : NaN;
-      const max = maxKey ? parseFloat(r[maxKey]) : 100;
+      const score = getTotalFor(r);
+      let max = getMaxFor(r);
+      if (max <= 0) {
+        // Default per curriculum: JEE 300, NEET 720
+        max = curr.toUpperCase().includes('NEET') ? 720 : 300;
+      }
       if (!isFinite(score)) continue;
       const key = `${curr}|${grade}`;
       if (!groups.has(key)) groups.set(key, { curr, grade, scores: [] });
-      groups.get(key)!.scores.push({ name, score, max: isFinite(max) ? max : 100 });
+      groups.get(key)!.scores.push({ name, score, max, userId: uid });
     }
     return Array.from(groups.entries()).map(([key, g]) => {
       const totalScore = g.scores.reduce((a, b) => a + b.score, 0);
@@ -105,11 +132,80 @@ export default function ResultsDashboard() {
         grade: g.grade,
         avg: totalScore / Math.max(g.scores.length, 1),
         max: totalMax / Math.max(g.scores.length, 1),
-        topper: topper ? { name: topper.name, score: topper.score } : null,
+        topper: topper ? { name: topper.name, score: topper.score, userId: topper.userId } : null,
         count: g.scores.length,
       };
+    }).sort((a, b) => {
+      const ja = a.curr.toUpperCase().includes('JEE') ? 0 : 1;
+      const jb = b.curr.toUpperCase().includes('JEE') ? 0 : 1;
+      if (ja !== jb) return ja - jb;
+      return a.grade.localeCompare(b.grade);
     });
   }, [students, activeTest]);
+
+  // Overall topper across all students for active test
+  const topPerformer = useMemo(() => {
+    if (!activeTest) return null;
+    let best: { name: string; score: number; userId: string } | null = null;
+    for (const s of students) {
+      const r = s.results[activeTest] ?? {};
+      const score = getTotalFor(r);
+      if (!isFinite(score)) continue;
+      const name = pickField(s.info, "Student Name", "Name");
+      const userId = pickField(s.info, "User ID", "user_id_vedantu");
+      if (!best || score > best.score) best = { name, score, userId };
+    }
+    return best;
+  }, [students, activeTest]);
+
+  // Class average (all students with valid score for activeTest)
+  const classAverage = useMemo(() => {
+    if (!activeTest) return { avg: 0, max: 0 };
+    let sum = 0, sumMax = 0, n = 0;
+    for (const s of students) {
+      const r = s.results[activeTest] ?? {};
+      const score = getTotalFor(r);
+      if (!isFinite(score)) continue;
+      const curr = pickField(s.info, "Curriculium", "Curriculum");
+      let max = getMaxFor(r);
+      if (max <= 0) max = curr.toUpperCase().includes('NEET') ? 720 : 300;
+      sum += score; sumMax += max; n++;
+    }
+    return { avg: n ? sum / n : 0, max: n ? sumMax / n : 0 };
+  }, [students, activeTest]);
+
+  const exportCsv = () => {
+    const headers = ["#", "User ID", "Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment Status", "Score", "Max", "%", "Performance"];
+    const lines = [headers.join(",")];
+    filteredStudents.forEach((s, i) => {
+      const r = s.results[activeTest] ?? {};
+      const score = getTotalFor(r);
+      const curr = pickField(s.info, "Curriculium", "Curriculum");
+      let max = getMaxFor(r);
+      if (max <= 0) max = curr.toUpperCase().includes('NEET') ? 720 : 300;
+      const pct = isFinite(score) && max > 0 ? (score / max) * 100 : 0;
+      const cells = [
+        i + 1,
+        pickField(s.info, "User ID", "user_id_vedantu"),
+        pickField(s.info, "Roll No", "Roll Number"),
+        pickField(s.info, "Student Name", "Name"),
+        curr,
+        pickField(s.info, "Grade"),
+        pickField(s.info, "Classroom Name", "Classroom"),
+        pickField(s.info, "Enrollment Status", "Status"),
+        isFinite(score) ? score : '',
+        max || '',
+        isFinite(score) ? pct.toFixed(1) + '%' : '',
+        isFinite(score) ? performanceBadge(pct).label : '',
+      ];
+      lines.push(cells.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(","));
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `Results_${activeTest || 'all'}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (isLoading) {
     return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
@@ -139,9 +235,14 @@ export default function ResultsDashboard() {
             {data?.gidUsed ? ` · GID ${data.gidUsed}` : ""}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5">
-          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportCsv} disabled={!students.length} className="gap-1.5">
+            <Download className="h-4 w-4" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching} className="gap-1.5">
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+        </div>
       </div>
 
       {students.length === 0 ? (
@@ -160,10 +261,35 @@ export default function ResultsDashboard() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Total Students</div><div className="text-2xl font-bold" style={{ color: RESULTS_COLOR }}>{students.length}</div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Tests Conducted</div><div className="text-2xl font-bold" style={{ color: RESULTS_COLOR }}>{testNames.length}</div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Showing</div><div className="text-2xl font-bold" style={{ color: RESULTS_COLOR }}>{filteredStudents.length}</div></CardContent></Card>
-            <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">Active Test</div><div className="text-lg font-bold" style={{ color: RESULTS_COLOR }}>{activeTest || '—'}</div></CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground uppercase">Total Students</div>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>{students.length}</div>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground uppercase">Tests Conducted</div>
+                <ClipboardList className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>{testNames.length}</div>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="text-xs text-muted-foreground uppercase">Class Avg ({activeTest || '—'})</div>
+              <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>
+                {classAverage.avg.toFixed(1)}
+                <span className="text-sm text-muted-foreground font-normal"> / {classAverage.max.toFixed(0)}</span>
+              </div>
+            </CardContent></Card>
+            <Card><CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground uppercase">Top Performer</div>
+                <Trophy className="h-4 w-4 text-amber-500" />
+              </div>
+              <div className="text-sm font-bold mt-1 truncate" style={{ color: RESULTS_COLOR }}>{topPerformer?.name || '—'}</div>
+              {topPerformer && <div className="text-xs text-muted-foreground">Score: {topPerformer.score}</div>}
+            </CardContent></Card>
           </div>
 
           {categoryStats.length > 0 && (
@@ -183,7 +309,15 @@ export default function ResultsDashboard() {
                       <div className="text-2xl font-bold" style={{ color: cardColor }}>
                         {c.avg.toFixed(1)} / {c.max.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">({pct.toFixed(1)}%)</span>
                       </div>
-                      {c.topper && <p className="text-xs mt-1">🏆 Topper: <span className="font-semibold">{c.topper.name}</span> ({c.topper.score})</p>}
+                      {c.topper && (
+                        <p className="text-xs mt-1 flex items-center gap-1">
+                          <Trophy className="h-3 w-3 text-amber-500" /> Topper:{' '}
+                          <button className="font-semibold hover:underline" onClick={() => c.topper!.userId && navigate(`/results/student/${encodeURIComponent(c.topper!.userId)}`)}>
+                            {c.topper.name}
+                          </button>{' '}
+                          ({c.topper.score})
+                        </p>
+                      )}
                     </CardContent></Card>
                   );
                 })}
@@ -233,10 +367,10 @@ export default function ResultsDashboard() {
               <tbody>
                 {filteredStudents.map((s, i) => {
                   const r = s.results[activeTest] ?? {};
-                  const totalKey = Object.keys(r).find(k => k.toLowerCase() === 'total') ?? Object.keys(r)[0];
-                  const maxKey = Object.keys(r).find(k => k.toLowerCase() === 'max');
-                  const score = totalKey ? parseFloat(r[totalKey]) : NaN;
-                  const max = maxKey ? parseFloat(r[maxKey]) : 100;
+                  const score = getTotalFor(r);
+                  const curr = pickField(s.info, "Curriculium", "Curriculum");
+                  let max = getMaxFor(r);
+                  if (max <= 0) max = curr.toUpperCase().includes('NEET') ? 720 : 300;
                   const pct = isFinite(score) && max > 0 ? (score / max) * 100 : 0;
                   const badge = performanceBadge(pct);
                   const userId = pickField(s.info, "User ID", "user_id_vedantu");

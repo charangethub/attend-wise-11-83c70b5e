@@ -70,6 +70,8 @@ const AdminPanel = () => {
   const [restoreDate, setRestoreDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [restoreMonth, setRestoreMonth] = useState(String(new Date().getMonth() + 1));
   const [restoreYear, setRestoreYear] = useState(String(new Date().getFullYear()));
+  const [pushingMarks, setPushingMarks] = useState(false);
+  const [marksExamType, setMarksExamType] = useState<"quarterly" | "half_yearly" | "pre_final_1" | "pre_final_2">("quarterly");
 
   const fetchUsers = async () => {
     const [{ data: profiles }, { data: roles }, { data: statuses }, { data: access }] = await Promise.all([
@@ -275,7 +277,7 @@ const AdminPanel = () => {
 
       {/* Add/Edit Dataset Dialog */}
       <Dialog open={addDatasetOpen} onOpenChange={(open) => { setAddDatasetOpen(open); if (!open) { setEditDataset(null); setNewDatasetName(""); setNewDatasetUrl(""); setNewDatasetPages([]); } }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editDataset ? "Edit Dataset" : "Add New Dataset"}</DialogTitle><DialogDescription>{editDataset ? "Update name, URL, and page mappings." : "Add a new student data source and assign it to dashboards."}</DialogDescription></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Dataset Name <span className="text-destructive">*</span></Label><Input placeholder="e.g. Master List Adilabad" value={newDatasetName} onChange={(e) => setNewDatasetName(e.target.value)} />{newDatasetName && !editDataset && <p className="text-xs text-muted-foreground">Internal ID: <code className="bg-muted px-1 rounded">{toSlug(newDatasetName)}</code></p>}</div>
@@ -433,6 +435,34 @@ const AdminPanel = () => {
                 <ArrowUpToLine className="h-4 w-4" />
                 Push Full (incl. Master Student List)
               </Button>
+              <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-2 py-1">
+                <Select value={marksExamType} onValueChange={(v: any) => setMarksExamType(v)}>
+                  <SelectTrigger className="h-8 w-40 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="quarterly">Quarterly</SelectItem>
+                    <SelectItem value="half_yearly">Half Yearly</SelectItem>
+                    <SelectItem value="pre_final_1">Pre Final 1</SelectItem>
+                    <SelectItem value="pre_final_2">Pre Final 2</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={async () => {
+                  setPushingMarks(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke("push-marks-to-sheet", { body: { exam_type: marksExamType } });
+                    if (error) throw error;
+                    if (data?.success) {
+                      toast.success(`✅ Pushed ${data.pushed ?? 0} student marks for ${marksExamType.replace(/_/g, ' ')}`, { duration: 6000 });
+                      if (data.failures?.length) toast.error(`Some failed: ${data.failures.slice(0, 3).join(", ")}`, { duration: 8000 });
+                    } else {
+                      toast.error(`Push failed: ${data?.error ?? "Unknown"}`, { duration: 8000 });
+                    }
+                  } catch (e: any) { toast.error("Push marks failed: " + (e?.message ?? "Unknown")); }
+                  setPushingMarks(false);
+                }} disabled={pushingMarks || syncTargets.filter(t => t.is_active && t.purpose === "marks").length === 0} variant="outline" className="gap-1.5 h-8">
+                  {pushingMarks ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
+                  Push Marks
+                </Button>
+              </div>
             </div>
           </div>
         </div>
