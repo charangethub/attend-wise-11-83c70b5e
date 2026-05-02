@@ -93,12 +93,21 @@ function getPrimaryIdentityKey(student: any): string | null {
 
 async function deleteStudentsById(supabase: any, ids: string[]): Promise<number> {
   let deleted = 0;
+  const relatedTables = ['attendance', 'call_logs', 'distribution_status', 'student_permissions'];
+
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
+
+    for (const table of relatedTables) {
+      const { error } = await supabase.from(table).delete().in('student_id', chunk);
+      if (error) throw error;
+    }
+
     const { error } = await supabase.from('students').delete().in('id', chunk);
     if (error) throw error;
     deleted += chunk.length;
   }
+
   return deleted;
 }
 
