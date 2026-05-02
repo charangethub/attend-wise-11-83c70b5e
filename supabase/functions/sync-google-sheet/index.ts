@@ -41,77 +41,6 @@ function findColumnIndex(headers: string[], matchers: string[]): number {
   return -1;
 }
 
-function normalizeKey(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function identityKey(label: string, ...values: unknown[]): string | null {
-  const parts = values.map(normalizeKey);
-  if (parts.some(part => !part)) return null;
-  return `${label}:${parts.join('|')}`;
-}
-
-function uniqueKeys(keys: Array<string | null>): string[] {
-  return Array.from(new Set(keys.filter((key): key is string => Boolean(key))));
-}
-
-function getStudentIdentityKeys(student: any): string[] {
-  const uid = normalizeKey(student.user_id_vedantu);
-  const roll = normalizeKey(student.roll_no);
-  const orderId = normalizeKey(student.order_id);
-  const classroomId = normalizeKey(student.classroom_id);
-  const classroomName = normalizeKey(student.classroom_name);
-  const curriculum = normalizeKey(student.curriculum);
-  const grade = normalizeKey(student.grade);
-  const name = normalizeKey(student.student_name);
-  const keys: Array<string | null> = [];
-
-  // Supabase enforces one roll_no per dataset, so roll_no must be the first
-  // match key when it exists. user_id_vedantu can be shared by siblings.
-  keys.push(identityKey('roll', roll));
-
-  if (uid) {
-    keys.push(identityKey('uid_order', uid, orderId));
-    keys.push(identityKey('uid_roll', uid, roll));
-    keys.push(identityKey('uid_class_id_name', uid, classroomId, name));
-    keys.push(identityKey('uid_class_name_course_name', uid, classroomName, curriculum, grade, name));
-    keys.push(identityKey('uid_class_name_name', uid, classroomName, name));
-    keys.push(identityKey('uid_course_name', uid, curriculum, grade, name));
-
-    if (!orderId && !roll && !classroomId && !classroomName && !curriculum && !grade) {
-      keys.push(identityKey('uid_name', uid, name));
-    }
-  } else {
-    keys.push(identityKey('roll_name', roll, name));
-  }
-
-  return uniqueKeys(keys);
-}
-
-function getPrimaryIdentityKey(student: any): string | null {
-  return getStudentIdentityKeys(student)[0] ?? null;
-}
-
-async function deleteStudentsById(supabase: any, ids: string[]): Promise<number> {
-  let deleted = 0;
-  const relatedTables = ['attendance', 'call_logs', 'distribution_status', 'student_permissions'];
-
-  for (let i = 0; i < ids.length; i += 100) {
-    const chunk = ids.slice(i, i + 100);
-
-    for (const table of relatedTables) {
-      const { error } = await supabase.from(table).delete().in('student_id', chunk);
-      if (error) throw error;
-    }
-
-    const { error } = await supabase.from('students').delete().in('id', chunk);
-    if (error) throw error;
-    deleted += chunk.length;
-  }
-
-  return deleted;
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   try {
@@ -153,7 +82,7 @@ Deno.serve(async (req) => {
     if (csvText.trim().startsWith('<!DOCTYPE') || csvText.trim().startsWith('<html')) return new Response(JSON.stringify({ success: false, error: 'URL returned HTML instead of CSV.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const rows = parseCSV(csvText);
-    if (rows.length < 2) return new Response(JSON.stringify({ success: false, error: `Sheet empty - ${rows.length} row(s).` }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (rows.length < 2) return new Response(JSON.stringify({ success: false, error: `Sheet empty — ${rows.length} row(s).` }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const headers = rows[0].map(h => h.toLowerCase().replace(/[.\s\n\r\(\)\/\-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''));
 
@@ -176,16 +105,19 @@ Deno.serve(async (req) => {
     const ec2Idx = findColumnIndex(headers, ['emergency_contact_number_2', 'emergency_contact_2', 'contact_2', 'mother_contact', 'alternate_contact']);
     const mobileIdx = findColumnIndex(headers, ['registered_contact_number', 'registered_contact', 'contact_number', 'mobile_number']);
 
-    const parsedStudents: any[] = [];
+    const students: any[] = [];
     for (let i = 1; i < rows.length; i++) {
       const cols = rows[i];
       const rollNo = (cols[rollNoIdx] || '').trim();
       const name_s = (cols[studentNameIdx] || '').trim();
       const userIdRaw = userIdVedantuIdx >= 0 ? (cols[userIdVedantuIdx] || '').trim() : '';
+      // A row is valid if it has a name AND at least one identifier (roll_no OR user_id_vedantu).
+      // Roll number may legitimately be empty for newly-enrolled students; user_id_vedantu is the
+      // primary identifier in that case.
       if (!name_s) continue;
       const sanitizedRollNo = rollNo.replace(/[^a-zA-Z0-9\-_]/g, '');
       if (!sanitizedRollNo && !userIdRaw) continue;
-      parsedStudents.push({
+      students.push({
         roll_no: sanitizedRollNo, student_name: name_s, dataset: slug,
         zone: zoneIdx >= 0 ? (cols[zoneIdx] || '').trim() : '',
         center: centerIdx >= 0 ? (cols[centerIdx] || '').trim() : '',
@@ -204,107 +136,61 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (parsedStudents.length === 0) return new Response(JSON.stringify({ success: false, error: `No students parsed from ${rows.length - 1} rows.`, found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    if (students.length === 0) return new Response(JSON.stringify({ success: false, error: `No students parsed from ${rows.length - 1} rows.`, found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    const students: any[] = [];
-    const seenSheetPrimaryKeys = new Set<string>();
-    let duplicateSheetRows = 0;
-    for (const student of parsedStudents) {
-      const primaryKey = getPrimaryIdentityKey(student);
-      if (!primaryKey) { duplicateSheetRows++; continue; }
-      if (seenSheetPrimaryKeys.has(primaryKey)) { duplicateSheetRows++; continue; }
-      seenSheetPrimaryKeys.add(primaryKey);
-      students.push(student);
-    }
-
-    if (students.length === 0) return new Response(JSON.stringify({ success: false, error: 'No unique student rows found after checking enrollment identity keys.', found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    const sheetIdentityKeys = new Set(students.flatMap(getStudentIdentityKeys));
+    // Build sets of identifiers present in the sheet so we can prune students that no longer exist.
+    // Match by user_id_vedantu first (primary identifier), then fall back to roll_no.
+    const sheetUserIds = new Set(students.map(s => s.user_id_vedantu).filter((v: string) => v && v.length > 0));
+    const sheetRollNos = new Set(students.map(s => s.roll_no).filter((v: string) => v && v.length > 0));
 
     const { data: existingStudents } = await supabase
       .from('students')
-      .select('id, roll_no, user_id_vedantu, order_id, student_name, classroom_id, classroom_name, curriculum, grade')
+      .select('id, roll_no, user_id_vedantu')
       .eq('dataset', slug);
 
-    const staleStudentIds = (existingStudents ?? []).filter((s: any) => {
-      const keys = getStudentIdentityKeys(s);
-      if (keys.length === 0) return true;
-      return !keys.some(key => sheetIdentityKeys.has(key));
+    const toDelete = (existingStudents ?? []).filter((s: any) => {
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
+      if (uid && sheetUserIds.has(uid)) return false;
+      if (roll && sheetRollNos.has(roll)) return false;
+      return true;
     }).map((s: any) => s.id);
+    if (toDelete.length > 0) { for (let i = 0; i < toDelete.length; i += 100) { await supabase.from('students').delete().in('id', toDelete.slice(i, i + 100)); } }
 
-    let deleted = await deleteStudentsById(supabase, staleStudentIds);
-    let remaining = (existingStudents ?? []).filter((s: any) => !staleStudentIds.includes(s.id));
-
-    const seenExistingPrimaryKeys = new Map<string, string>();
-    const duplicateExistingIds: string[] = [];
-    for (const student of remaining as any[]) {
-      const primaryKey = getPrimaryIdentityKey(student);
-      if (!primaryKey) continue;
-      const keeperId = seenExistingPrimaryKeys.get(primaryKey);
-      if (keeperId && keeperId !== student.id) duplicateExistingIds.push(student.id);
-      else seenExistingPrimaryKeys.set(primaryKey, student.id);
+    // Build lookup maps of remaining existing rows by user_id_vedantu and roll_no for fast match.
+    const remaining = (existingStudents ?? []).filter((s: any) => !toDelete.includes(s.id));
+    const byUserId = new Map<string, string>();
+    const byRollNo = new Map<string, string>();
+    for (const s of remaining as any[]) {
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
+      if (uid) byUserId.set(uid, s.id);
+      if (roll) byRollNo.set(roll, s.id);
     }
-
-    if (duplicateExistingIds.length > 0) {
-      deleted += await deleteStudentsById(supabase, duplicateExistingIds);
-      remaining = remaining.filter((s: any) => !duplicateExistingIds.includes(s.id));
-    }
-
-    const byPrimaryKey = new Map<string, string>();
-    const byAnyKey = new Map<string, string>();
-    const addKeysForId = (student: any, id: string) => {
-      const keys = getStudentIdentityKeys(student);
-      keys.forEach((key, index) => {
-        if (index === 0) byPrimaryKey.set(key, id);
-        if (!byAnyKey.has(key)) byAnyKey.set(key, id);
-      });
-    };
-
-    for (const student of remaining as any[]) addKeysForId(student, student.id);
-
-    const findExistingId = (student: any): string | null => {
-      const keys = getStudentIdentityKeys(student);
-      for (const key of keys) { const id = byPrimaryKey.get(key); if (id) return id; }
-      for (const key of keys) { const id = byAnyKey.get(key); if (id) return id; }
-      return null;
-    };
 
     let synced = 0;
     const upsertErrors: string[] = [];
     for (const student of students) {
-      let existingId = findExistingId(student);
-      let error: any = null;
-      let savedId = existingId;
+      const uid = (student.user_id_vedantu || '').trim();
+      const roll = (student.roll_no || '').trim();
+      // Prefer matching by user_id_vedantu (stable identifier from the source).
+      const existingId = (uid && byUserId.get(uid)) || (roll && byRollNo.get(roll)) || null;
 
+      let error: any = null;
       if (existingId) {
         ({ error } = await supabase.from('students').update(student).eq('id', existingId));
       } else {
-        const { data: inserted, error: insertError } = await supabase.from('students').insert(student).select('id').single();
-        error = insertError;
-        savedId = (inserted as any)?.id ?? null;
-
-        if (error && error.message?.includes('students_roll_no_dataset_uniq') && student.roll_no) {
-          const { data: rollMatch } = await supabase
-            .from('students')
-            .select('id')
-            .eq('dataset', slug)
-            .eq('roll_no', student.roll_no)
-            .maybeSingle();
-
-          if ((rollMatch as any)?.id) {
-            existingId = (rollMatch as any).id;
-            const { error: updateError } = await supabase.from('students').update(student).eq('id', existingId);
-            error = updateError;
-            savedId = existingId;
-          }
-        }
+        ({ error } = await supabase.from('students').insert(student));
       }
-
-      if (!error && savedId) {
+      if (!error) {
         synced++;
-        addKeysForId(student, savedId);
+        // Track newly inserted rows so subsequent rows in the same sheet don't re-insert.
+        if (!existingId) {
+          if (uid) byUserId.set(uid, 'new');
+          if (roll) byRollNo.set(roll, 'new');
+        }
       } else if (upsertErrors.length < 3) {
-        upsertErrors.push(error?.message ?? 'Unknown upsert error');
+        upsertErrors.push(error.message);
       }
     }
 
@@ -313,21 +199,7 @@ Deno.serve(async (req) => {
     await supabase.from('student_datasets').update({ updated_at: new Date().toISOString() }).eq('slug', slug);
     await supabase.from('system_settings').upsert({ key: 'last_sync_at', value: new Date().toISOString() }, { onConflict: 'key' });
 
-    const warnings = [
-      duplicateSheetRows > 0 ? `${duplicateSheetRows} duplicate source row(s) skipped` : null,
-      upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : null,
-    ].filter(Boolean);
-
-    return new Response(JSON.stringify({
-      success: true,
-      synced,
-      total: students.length,
-      source_rows: parsedStudents.length,
-      deleted,
-      dataset_slug: slug,
-      dataset_name: name,
-      warning: warnings.length > 0 ? warnings.join('; ') : undefined,
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true, synced, total: students.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('[sync-google-sheet] internal error:', error);
     return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
