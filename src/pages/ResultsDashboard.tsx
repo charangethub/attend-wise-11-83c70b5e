@@ -367,10 +367,10 @@ export default function ResultsDashboard() {
               <tbody>
                 {filteredStudents.map((s, i) => {
                   const r = s.results[activeTest] ?? {};
-                  const totalKey = Object.keys(r).find(k => k.toLowerCase() === 'total') ?? Object.keys(r)[0];
-                  const maxKey = Object.keys(r).find(k => k.toLowerCase() === 'max');
-                  const score = totalKey ? parseFloat(r[totalKey]) : NaN;
-                  const max = maxKey ? parseFloat(r[maxKey]) : 100;
+                  const score = getTotalFor(r);
+                  const curr = pickField(s.info, "Curriculium", "Curriculum");
+                  let max = getMaxFor(r);
+                  if (max <= 0) max = curr.toUpperCase().includes('NEET') ? 720 : 300;
                   const pct = isFinite(score) && max > 0 ? (score / max) * 100 : 0;
                   const badge = performanceBadge(pct);
                   const userId = pickField(s.info, "User ID", "user_id_vedantu");
