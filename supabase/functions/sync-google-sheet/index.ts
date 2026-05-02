@@ -66,8 +66,10 @@ function getStudentIdentityKeys(student: any): string[] {
   const name = normalizeKey(student.student_name);
   const keys: Array<string | null> = [];
 
-  // user_id_vedantu can be shared by siblings/family accounts, so never use it alone.
-  // Pair it with enrollment-level fields so completed batches can be pruned correctly.
+  // Supabase enforces one roll_no per dataset, so roll_no must be the first
+  // match key when it exists. user_id_vedantu can be shared by siblings.
+  keys.push(identityKey('roll', roll));
+
   if (uid) {
     keys.push(identityKey('uid_order', uid, orderId));
     keys.push(identityKey('uid_roll', uid, roll));
@@ -80,7 +82,6 @@ function getStudentIdentityKeys(student: any): string[] {
       keys.push(identityKey('uid_name', uid, name));
     }
   } else {
-    keys.push(identityKey('roll', roll));
     keys.push(identityKey('roll_name', roll, name));
   }
 
@@ -271,7 +272,7 @@ Deno.serve(async (req) => {
     let synced = 0;
     const upsertErrors: string[] = [];
     for (const student of students) {
-      const existingId = findExistingId(student);
+      let existingId = findExistingId(student);
       let error: any = null;
       let savedId = existingId;
 
@@ -281,6 +282,22 @@ Deno.serve(async (req) => {
         const { data: inserted, error: insertError } = await supabase.from('students').insert(student).select('id').single();
         error = insertError;
         savedId = (inserted as any)?.id ?? null;
+
+        if (error && error.message?.includes('students_roll_no_dataset_uniq') && student.roll_no) {
+          const { data: rollMatch } = await supabase
+            .from('students')
+            .select('id')
+            .eq('dataset', slug)
+            .eq('roll_no', student.roll_no)
+            .maybeSingle();
+
+          if ((rollMatch as any)?.id) {
+            existingId = (rollMatch as any).id;
+            const { error: updateError } = await supabase.from('students').update(student).eq('id', existingId);
+            error = updateError;
+            savedId = existingId;
+          }
+        }
       }
 
       if (!error && savedId) {
