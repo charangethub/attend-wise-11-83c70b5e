@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-export type ResultsTestGroup = { name: string; subHeaders: string[] };
+export type ResultsTestGroup = { name: string; subHeaders: string[]; maxMarks?: number[] };
 export type ResultsStudent = {
   info: Record<string, string>;
   results: Record<string, Record<string, string>>;
@@ -13,6 +13,7 @@ export type ResultsData = {
   students: ResultsStudent[];
   totalStudents: number;
   gidUsed: string;
+  maxMarksRowDetected?: boolean;
   fetchedAt?: string;
   error?: string;
 };

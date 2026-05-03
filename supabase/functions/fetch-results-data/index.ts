@@ -119,7 +119,8 @@ Deno.serve(async (req) => {
 
     const row0 = rows[0];
     const row1 = rows[1];
-    const ncols = Math.max(row0.length, row1.length);
+    const row2 = rows[2] ?? [];
+    const ncols = Math.max(row0.length, row1.length, row2.length);
 
     // Expand row 0 (test group headers) forward
     const groupNames: string[] = [];
@@ -132,8 +133,23 @@ Deno.serve(async (req) => {
 
     // Identify info vs test columns based on row 0 group name pattern
     const studentInfoColumns: string[] = [];
-    const testGroups: { name: string; columns: { index: number; subHeader: string }[] }[] = [];
-    const groupMap = new Map<string, { name: string; columns: { index: number; subHeader: string }[] }>();
+    const testGroups: { name: string; columns: { index: number; subHeader: string; maxMark: number }[] }[] = [];
+    const groupMap = new Map<string, { name: string; columns: { index: number; subHeader: string; maxMark: number }[] }>();
+
+    // Detect if row2 is a max-marks row (mostly numeric across test columns) — falls back to data row otherwise
+    let maxMarksRowIsHeader = false;
+    {
+      let numericCount = 0, totalTestCols = 0;
+      for (let i = 0; i < ncols; i++) {
+        const grp = (() => { let last = ''; for (let j = 0; j <= i; j++) { const v = (row0[j] ?? '').trim(); if (v) last = v; } return last; })();
+        if (grp && TEST_GROUP_RE.test(grp)) {
+          totalTestCols++;
+          const v = (row2[i] ?? '').trim();
+          if (v && !isNaN(Number(v))) numericCount++;
+        }
+      }
+      maxMarksRowIsHeader = totalTestCols > 0 && numericCount / totalTestCols >= 0.5;
+    }
 
     for (let i = 0; i < ncols; i++) {
       const sub = (row1[i] ?? '').trim();
@@ -141,11 +157,12 @@ Deno.serve(async (req) => {
       const isTestGroup = grp && TEST_GROUP_RE.test(grp);
       if (isTestGroup) {
         if (!groupMap.has(grp)) {
-          const g = { name: grp, columns: [] as { index: number; subHeader: string }[] };
+          const g = { name: grp, columns: [] as { index: number; subHeader: string; maxMark: number }[] };
           groupMap.set(grp, g);
           testGroups.push(g);
         }
-        groupMap.get(grp)!.columns.push({ index: i, subHeader: sub });
+        const maxMark = maxMarksRowIsHeader ? Number((row2[i] ?? '').trim()) || 0 : 0;
+        groupMap.get(grp)!.columns.push({ index: i, subHeader: sub, maxMark });
       } else {
         if (sub) studentInfoColumns.push(sub);
       }
@@ -161,7 +178,8 @@ Deno.serve(async (req) => {
     }
 
     const students = [];
-    for (let r = 2; r < rows.length; r++) {
+    const dataStart = maxMarksRowIsHeader ? 3 : 2;
+    for (let r = dataStart; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.every(c => !String(c ?? '').trim())) continue;
       const info: Record<string, string> = {};
@@ -179,11 +197,16 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       studentInfoColumns,
-      testGroups: testGroups.map(g => ({ name: g.name, subHeaders: g.columns.map(c => c.subHeader) })),
+      testGroups: testGroups.map(g => ({
+        name: g.name,
+        subHeaders: g.columns.map(c => c.subHeader),
+        maxMarks: g.columns.map(c => c.maxMark),
+      })),
       testNames: testGroups.map(g => g.name),
       students,
       totalStudents: students.length,
       gidUsed,
+      maxMarksRowDetected: maxMarksRowIsHeader,
       fetchedAt: new Date().toISOString(),
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (e: any) {
