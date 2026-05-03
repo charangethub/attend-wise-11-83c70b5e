@@ -52,7 +52,7 @@ async function fetchCsv(baseUrl: string, gid: string): Promise<string | null> {
   } catch { return null; }
 }
 
-const TEST_GROUP_RE = /(?:rt|ut)[\s\-–—]*\d+|test\s*\d+/i;
+const TEST_GROUP_RE = /(?:rt|ut)[\s\-–—]*\d+|test\s*\d*|exam|quarterly|half[\s\-]*yearly|pre[\s\-]*final|annual|baseline|base[\s\-]*line/i;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -122,14 +122,36 @@ Deno.serve(async (req) => {
     const row2 = rows[2] ?? [];
     const ncols = Math.max(row0.length, row1.length, row2.length);
 
-    // Expand row 0 (test group headers) forward
+    // Expand row 0 (test group headers) forward — but only across columns where row1 has a sub-header
+    // (i.e. the merged test group spans). When we hit a column with no sub-header AND a fresh group name later, reset.
     const groupNames: string[] = [];
-    let lastGroup = '';
-    for (let i = 0; i < ncols; i++) {
-      const v = (row0[i] ?? '').trim();
-      if (v) lastGroup = v;
-      groupNames.push(lastGroup);
+    {
+      let lastGroup = '';
+      let lastGroupCol = -1;
+      for (let i = 0; i < ncols; i++) {
+        const v = (row0[i] ?? '').trim();
+        if (v) { lastGroup = v; lastGroupCol = i; }
+        groupNames.push(lastGroup);
+      }
     }
+
+    // Identify which groups are "test groups": either name matches the regex, OR their sub-headers include Total/Max/%
+    const groupIsTest = new Map<string, boolean>();
+    {
+      const subsByGroup = new Map<string, string[]>();
+      for (let i = 0; i < ncols; i++) {
+        const grp = groupNames[i];
+        if (!grp) continue;
+        const sub = (row1[i] ?? '').trim();
+        if (!subsByGroup.has(grp)) subsByGroup.set(grp, []);
+        subsByGroup.get(grp)!.push(sub);
+      }
+      for (const [grp, subs] of subsByGroup.entries()) {
+        const hasMarkSubs = subs.some(s => /^(total|max|%|physics|chemistry|maths?|biology|bio)$/i.test(s));
+        groupIsTest.set(grp, TEST_GROUP_RE.test(grp) || hasMarkSubs);
+      }
+    }
+    const isTestGroupName = (g: string) => !!g && (groupIsTest.get(g) ?? false);
 
     // Identify info vs test columns based on row 0 group name pattern
     const studentInfoColumns: string[] = [];
@@ -141,20 +163,19 @@ Deno.serve(async (req) => {
     {
       let numericCount = 0, totalTestCols = 0;
       for (let i = 0; i < ncols; i++) {
-        const grp = (() => { let last = ''; for (let j = 0; j <= i; j++) { const v = (row0[j] ?? '').trim(); if (v) last = v; } return last; })();
-        if (grp && TEST_GROUP_RE.test(grp)) {
+        if (isTestGroupName(groupNames[i])) {
           totalTestCols++;
           const v = (row2[i] ?? '').trim();
           if (v && !isNaN(Number(v))) numericCount++;
         }
       }
-      maxMarksRowIsHeader = totalTestCols > 0 && numericCount / totalTestCols >= 0.5;
+      maxMarksRowIsHeader = totalTestCols > 0 && numericCount / totalTestCols >= 0.8;
     }
 
     for (let i = 0; i < ncols; i++) {
       const sub = (row1[i] ?? '').trim();
       const grp = groupNames[i];
-      const isTestGroup = grp && TEST_GROUP_RE.test(grp);
+      const isTestGroup = isTestGroupName(grp);
       if (isTestGroup) {
         if (!groupMap.has(grp)) {
           const g = { name: grp, columns: [] as { index: number; subHeader: string; maxMark: number }[] };
@@ -164,7 +185,8 @@ Deno.serve(async (req) => {
         const maxMark = maxMarksRowIsHeader ? Number((row2[i] ?? '').trim()) || 0 : 0;
         groupMap.get(grp)!.columns.push({ index: i, subHeader: sub, maxMark });
       } else {
-        if (sub) studentInfoColumns.push(sub);
+        const name = (row0[i] ?? '').trim() || sub;
+        if (name) studentInfoColumns.push(name);
       }
     }
 
@@ -173,8 +195,12 @@ Deno.serve(async (req) => {
     for (let i = 0; i < ncols; i++) {
       const sub = (row1[i] ?? '').trim();
       const grp = groupNames[i];
-      const isTestGroup = grp && TEST_GROUP_RE.test(grp);
-      if (!isTestGroup && sub) infoIdxByName.push({ name: sub, index: i });
+      // Student info columns: header is in row0 (e.g., "Roll No", "User ID"), sub-header empty
+      // For these, the "name" comes from row0
+      if (!isTestGroupName(grp)) {
+        const name = (row0[i] ?? '').trim() || sub;
+        if (name) infoIdxByName.push({ name, index: i });
+      }
     }
 
     const students = [];
