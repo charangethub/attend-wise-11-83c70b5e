@@ -185,7 +185,8 @@ Deno.serve(async (req) => {
         const maxMark = maxMarksRowIsHeader ? Number((row2[i] ?? '').trim()) || 0 : 0;
         groupMap.get(grp)!.columns.push({ index: i, subHeader: sub, maxMark });
       } else {
-        if (sub) studentInfoColumns.push(sub);
+        const name = (row0[i] ?? '').trim() || sub;
+        if (name) studentInfoColumns.push(name);
       }
     }
 
