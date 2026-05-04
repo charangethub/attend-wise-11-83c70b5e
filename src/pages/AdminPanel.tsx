@@ -191,6 +191,7 @@ const AdminPanel = () => {
     setSyncingPush(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
+      const activeAttendanceTargets = syncTargets.filter(t => t.is_active && (t.purpose ?? "attendance") === "attendance");
       const body: any = { date: today, wait: true };
       if (mode === "full") body.only = ["sync_master", "sync_attendance", "sync_absentees", "sync_analytics"];
       // attendance mode uses default (skips sync_master) for speed
@@ -199,19 +200,23 @@ const AdminPanel = () => {
       if (data?.success) {
         const results = data.results ?? [];
         if (data.queued) {
-          toast.success(`✅ Sync queued to ${data.targets ?? syncTargets.filter(t => t.is_active).length} target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
+          toast.success(`✅ Sync queued to ${data.targets ?? activeAttendanceTargets.length} attendance target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
           fetchSettings();
           return;
         }
         const successCount = results.filter((r: any) => r.success).length;
         toast.success(`✅ Pushed to ${successCount}/${results.length} target(s) — ${data.attendance_records ?? 0} records`, { duration: 6000 });
         if (results.some((r: any) => !r.success)) {
-          const failures = results.filter((r: any) => !r.success).map((r: any) => `${r.label}: ${r.error}`);
+          const failures = results.filter((r: any) => !r.success).flatMap((r: any) => {
+            const details = Array.isArray(r.errors) && r.errors.length > 0 ? r.errors : [r.error ?? "Failed"];
+            return details.map((detail: string) => `${r.label}: ${detail}`);
+          });
           toast.error(`Some targets failed: ${failures.join(", ")}`, { duration: 10000 });
         }
         fetchSettings();
       } else {
-        toast.error(`Push failed: ${data?.error || "Unknown"}`, { duration: 10000 });
+        const details = Array.isArray(data?.errors) && data.errors.length > 0 ? data.errors.join(", ") : data?.error || "Unknown";
+        toast.error(`Push failed: ${details}`, { duration: 10000 });
       }
     } catch (err: any) { toast.error("Push failed: " + (err.message || "Unknown error")); }
     setSyncingPush(false);
@@ -427,11 +432,11 @@ const AdminPanel = () => {
             })}
             {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+              <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active && (t.purpose ?? "attendance") === "attendance").length === 0} variant="outline" className="gap-1.5">
                 {syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
                 Push Today's Attendance (fast)
               </Button>
-              <Button onClick={() => handlePushSync("full")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+              <Button onClick={() => handlePushSync("full")} disabled={syncingPush || syncTargets.filter(t => t.is_active && (t.purpose ?? "attendance") === "attendance").length === 0} variant="outline" className="gap-1.5">
                 <ArrowUpToLine className="h-4 w-4" />
                 Push Full (incl. Master Student List)
               </Button>
