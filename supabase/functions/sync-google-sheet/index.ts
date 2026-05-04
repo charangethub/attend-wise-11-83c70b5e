@@ -174,17 +174,17 @@ Deno.serve(async (req) => {
     const byUserId = new Map<string, string>();
     const byRollNo = new Map<string, string>();
     for (const s of remaining as any[]) {
-      const uid = (s.user_id_vedantu || '').trim();
-      const roll = (s.roll_no || '').trim();
+      const uid = (s.user_id_vedantu || '').trim().toLowerCase();
+      const roll = (s.roll_no || '').trim().toLowerCase();
       if (uid) byUserId.set(uid, s.id);
       if (roll) byRollNo.set(roll, s.id);
     }
 
     let synced = 0;
     const upsertErrors: string[] = [];
-    for (const student of students) {
-      const uid = (student.user_id_vedantu || '').trim();
-      const roll = (student.roll_no || '').trim();
+    for (const student of studentsToSync) {
+      const uid = (student.user_id_vedantu || '').trim().toLowerCase();
+      const roll = (student.roll_no || '').trim().toLowerCase();
       // Prefer matching by user_id_vedantu (stable identifier from the source).
       const existingId = (uid && byUserId.get(uid)) || (roll && byRollNo.get(roll)) || null;
 
@@ -211,7 +211,8 @@ Deno.serve(async (req) => {
     await supabase.from('student_datasets').update({ updated_at: new Date().toISOString() }).eq('slug', slug);
     await supabase.from('system_settings').upsert({ key: 'last_sync_at', value: new Date().toISOString() }, { onConflict: 'key' });
 
-    return new Response(JSON.stringify({ success: true, synced, total: students.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const skipped_duplicates = students.length - studentsToSync.length;
+    return new Response(JSON.stringify({ success: true, synced, total: studentsToSync.length, skipped_duplicates, deleted_stale: toDelete.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('[sync-google-sheet] internal error:', error);
     return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
