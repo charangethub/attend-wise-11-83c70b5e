@@ -152,8 +152,8 @@ Deno.serve(async (req) => {
     // Build sets of identifiers present in the sheet so we can prune students that no longer exist.
     // If an existing row has a User ID, it must match by User ID only; roll number fallback is only
     // allowed for legacy rows with no User ID.
-    const sheetUserIds = new Set(studentsToSync.map(s => (s.user_id_vedantu || '').trim()).filter((v: string) => v && v.length > 0));
-    const sheetRollNos = new Set(studentsToSync.map(s => (s.roll_no || '').trim()).filter((v: string) => v && v.length > 0));
+    const sheetUserIds = new Set(studentsToSync.map(s => (s.user_id_vedantu || '').trim().toLowerCase()).filter((v: string) => v && v.length > 0));
+    const sheetRollNos = new Set(studentsToSync.map(s => (s.roll_no || '').trim().toLowerCase()).filter((v: string) => v && v.length > 0));
 
     const { data: existingStudents } = await supabase
       .from('students')
@@ -161,8 +161,8 @@ Deno.serve(async (req) => {
       .eq('dataset', slug);
 
     const toDelete = (existingStudents ?? []).filter((s: any) => {
-      const uid = (s.user_id_vedantu || '').trim();
-      const roll = (s.roll_no || '').trim();
+      const uid = (s.user_id_vedantu || '').trim().toLowerCase();
+      const roll = (s.roll_no || '').trim().toLowerCase();
       if (uid) return !sheetUserIds.has(uid);
       if (roll && sheetRollNos.has(roll)) return false;
       return true;
