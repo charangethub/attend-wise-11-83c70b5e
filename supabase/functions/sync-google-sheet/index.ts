@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
     // If an existing row has a User ID, it must match by User ID only; roll number fallback is only
     // allowed for legacy rows with no User ID.
     const sheetUserIds = new Set(studentsToSync.map(s => (s.user_id_vedantu || '').trim()).filter((v: string) => v && v.length > 0));
-    const sheetRollNosWithoutUserId = new Set(studentsToSync.filter(s => !(s.user_id_vedantu || '').trim()).map(s => (s.roll_no || '').trim()).filter((v: string) => v && v.length > 0));
+    const sheetRollNos = new Set(studentsToSync.map(s => (s.roll_no || '').trim()).filter((v: string) => v && v.length > 0));
 
     const { data: existingStudents } = await supabase
       .from('students')
@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
       const uid = (s.user_id_vedantu || '').trim();
       const roll = (s.roll_no || '').trim();
       if (uid) return !sheetUserIds.has(uid);
-      if (roll && sheetRollNosWithoutUserId.has(roll)) return false;
+      if (roll && sheetRollNos.has(roll)) return false;
       return true;
     }).map((s: any) => s.id);
     if (toDelete.length > 0) { for (let i = 0; i < toDelete.length; i += 100) { await supabase.from('students').delete().in('id', toDelete.slice(i, i + 100)); } }
