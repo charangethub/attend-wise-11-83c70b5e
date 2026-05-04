@@ -28,6 +28,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const url: string = (body?.url ?? '').trim();
+    const purpose = body?.purpose === 'marks' ? 'marks' : 'attendance';
     if (!url || !/^https:\/\//i.test(url))
       return new Response(JSON.stringify({ success: false, error: 'Valid https:// URL required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
@@ -50,12 +51,16 @@ Deno.serve(async (req) => {
 
     const start = Date.now();
     try {
+      const today = new Date().toISOString().slice(0, 10);
+      const testPayload = purpose === 'attendance'
+        ? { action: 'sync_attendance', test: true, date: today, records: [] }
+        : { action: 'ping', test: true, purpose, date: today };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'ping', test: true, date: new Date().toISOString().slice(0, 10) }),
+        body: JSON.stringify(testPayload),
         redirect: 'follow',
         signal: controller.signal,
       });
@@ -84,7 +89,9 @@ Deno.serve(async (req) => {
     } catch (e: any) {
       const elapsed = Date.now() - start;
       const msg = e?.message ?? String(e);
-      const timeoutMessage = 'Timeout (10s) — Apps Script did not answer the lightweight ping. Add a fast ping handler before heavy sync work: if (payload.action === "ping") return JSON success immediately.';
+      const timeoutMessage = purpose === 'attendance'
+        ? 'Timeout (10s) - Apps Script did not answer the lightweight attendance test. Ensure sync_attendance with an empty records array returns JSON success immediately.'
+        : 'Timeout (10s) - Apps Script did not answer the lightweight ping. Add a fast ping handler before heavy sync work: if (payload.action === "ping") return JSON success immediately.';
       return new Response(JSON.stringify({ success: false, error: msg.includes('abort') ? timeoutMessage : msg, elapsed_ms: elapsed }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
   } catch (error) {

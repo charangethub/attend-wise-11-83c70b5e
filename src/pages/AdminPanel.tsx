@@ -191,7 +191,7 @@ const AdminPanel = () => {
     setSyncingPush(true);
     try {
       const today = format(new Date(), "yyyy-MM-dd");
-      const body: any = { date: today };
+      const body: any = { date: today, wait: true };
       if (mode === "full") body.only = ["sync_master", "sync_attendance", "sync_absentees", "sync_analytics"];
       // attendance mode uses default (skips sync_master) for speed
       const { data, error } = await supabase.functions.invoke("sync-to-sheet", { body });
@@ -408,7 +408,7 @@ const AdminPanel = () => {
                     onClick={async () => {
                       setTestingTarget(t.id);
                       try {
-                        const { data, error } = await supabase.functions.invoke("test-sync-target", { body: { url: t.apps_script_url } });
+                        const { data, error } = await supabase.functions.invoke("test-sync-target", { body: { url: t.apps_script_url, purpose: t.purpose ?? "attendance" } });
                         if (error) { toast.error(`❌ ${t.label}: ${error.message}`); }
                         else if (data?.success) toast.success(`✅ ${t.label} is working (${data.elapsed_ms}ms)`);
                         else toast.error(`❌ ${t.label}: ${data?.error ?? "Failed"}`, { duration: 12000 });
