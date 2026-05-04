@@ -138,22 +138,10 @@ Deno.serve(async (req) => {
 
     if (students.length === 0) return new Response(JSON.stringify({ success: false, error: `No students parsed from ${rows.length - 1} rows.`, found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    // De-duplicate incoming rows before touching the database.
-    // User ID is the stable primary key; roll number is only a fallback when User ID is absent.
-    const dedupedByKey = new Map<string, any>();
-    for (const student of students) {
-      const uid = (student.user_id_vedantu || '').trim().toLowerCase();
-      const roll = (student.roll_no || '').trim().toLowerCase();
-      const key = uid ? `uid:${uid}` : `roll:${roll}`;
-      if (key !== 'roll:') dedupedByKey.set(key, student);
-    }
-    const studentsToSync = Array.from(dedupedByKey.values());
-
     // Build sets of identifiers present in the sheet so we can prune students that no longer exist.
-    // If an existing row has a User ID, it must match by User ID only; roll number fallback is only
-    // allowed for legacy rows with no User ID.
-    const sheetUserIds = new Set(studentsToSync.map(s => (s.user_id_vedantu || '').trim().toLowerCase()).filter((v: string) => v && v.length > 0));
-    const sheetRollNos = new Set(studentsToSync.map(s => (s.roll_no || '').trim().toLowerCase()).filter((v: string) => v && v.length > 0));
+    // Match by user_id_vedantu first (primary identifier), then fall back to roll_no.
+    const sheetUserIds = new Set(students.map(s => s.user_id_vedantu).filter((v: string) => v && v.length > 0));
+    const sheetRollNos = new Set(students.map(s => s.roll_no).filter((v: string) => v && v.length > 0));
 
     const { data: existingStudents } = await supabase
       .from('students')
@@ -161,9 +149,9 @@ Deno.serve(async (req) => {
       .eq('dataset', slug);
 
     const toDelete = (existingStudents ?? []).filter((s: any) => {
-      const uid = (s.user_id_vedantu || '').trim().toLowerCase();
-      const roll = (s.roll_no || '').trim().toLowerCase();
-      if (uid) return !sheetUserIds.has(uid);
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
+      if (uid && sheetUserIds.has(uid)) return false;
       if (roll && sheetRollNos.has(roll)) return false;
       return true;
     }).map((s: any) => s.id);
@@ -174,17 +162,17 @@ Deno.serve(async (req) => {
     const byUserId = new Map<string, string>();
     const byRollNo = new Map<string, string>();
     for (const s of remaining as any[]) {
-      const uid = (s.user_id_vedantu || '').trim().toLowerCase();
-      const roll = (s.roll_no || '').trim().toLowerCase();
+      const uid = (s.user_id_vedantu || '').trim();
+      const roll = (s.roll_no || '').trim();
       if (uid) byUserId.set(uid, s.id);
       if (roll) byRollNo.set(roll, s.id);
     }
 
     let synced = 0;
     const upsertErrors: string[] = [];
-    for (const student of studentsToSync) {
-      const uid = (student.user_id_vedantu || '').trim().toLowerCase();
-      const roll = (student.roll_no || '').trim().toLowerCase();
+    for (const student of students) {
+      const uid = (student.user_id_vedantu || '').trim();
+      const roll = (student.roll_no || '').trim();
       // Prefer matching by user_id_vedantu (stable identifier from the source).
       const existingId = (uid && byUserId.get(uid)) || (roll && byRollNo.get(roll)) || null;
 
@@ -211,8 +199,7 @@ Deno.serve(async (req) => {
     await supabase.from('student_datasets').update({ updated_at: new Date().toISOString() }).eq('slug', slug);
     await supabase.from('system_settings').upsert({ key: 'last_sync_at', value: new Date().toISOString() }, { onConflict: 'key' });
 
-    const skipped_duplicates = students.length - studentsToSync.length;
-    return new Response(JSON.stringify({ success: true, synced, total: studentsToSync.length, skipped_duplicates, deleted_stale: toDelete.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: true, synced, total: students.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
     console.error('[sync-google-sheet] internal error:', error);
     return new Response(JSON.stringify({ success: false, error: 'Internal server error' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
