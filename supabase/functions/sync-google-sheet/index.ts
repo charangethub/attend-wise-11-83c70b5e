@@ -138,10 +138,22 @@ Deno.serve(async (req) => {
 
     if (students.length === 0) return new Response(JSON.stringify({ success: false, error: `No students parsed from ${rows.length - 1} rows.`, found_columns: headers }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
+    // De-duplicate incoming rows before touching the database.
+    // User ID is the stable primary key; roll number is only a fallback when User ID is absent.
+    const dedupedByKey = new Map<string, any>();
+    for (const student of students) {
+      const uid = (student.user_id_vedantu || '').trim().toLowerCase();
+      const roll = (student.roll_no || '').trim().toLowerCase();
+      const key = uid ? `uid:${uid}` : `roll:${roll}`;
+      if (key !== 'roll:') dedupedByKey.set(key, student);
+    }
+    const studentsToSync = Array.from(dedupedByKey.values());
+
     // Build sets of identifiers present in the sheet so we can prune students that no longer exist.
-    // Match by user_id_vedantu first (primary identifier), then fall back to roll_no.
-    const sheetUserIds = new Set(students.map(s => s.user_id_vedantu).filter((v: string) => v && v.length > 0));
-    const sheetRollNos = new Set(students.map(s => s.roll_no).filter((v: string) => v && v.length > 0));
+    // If an existing row has a User ID, it must match by User ID only; roll number fallback is only
+    // allowed for legacy rows with no User ID.
+    const sheetUserIds = new Set(studentsToSync.map(s => (s.user_id_vedantu || '').trim()).filter((v: string) => v && v.length > 0));
+    const sheetRollNosWithoutUserId = new Set(studentsToSync.filter(s => !(s.user_id_vedantu || '').trim()).map(s => (s.roll_no || '').trim()).filter((v: string) => v && v.length > 0));
 
     const { data: existingStudents } = await supabase
       .from('students')
@@ -151,8 +163,8 @@ Deno.serve(async (req) => {
     const toDelete = (existingStudents ?? []).filter((s: any) => {
       const uid = (s.user_id_vedantu || '').trim();
       const roll = (s.roll_no || '').trim();
-      if (uid && sheetUserIds.has(uid)) return false;
-      if (roll && sheetRollNos.has(roll)) return false;
+      if (uid) return !sheetUserIds.has(uid);
+      if (roll && sheetRollNosWithoutUserId.has(roll)) return false;
       return true;
     }).map((s: any) => s.id);
     if (toDelete.length > 0) { for (let i = 0; i < toDelete.length; i += 100) { await supabase.from('students').delete().in('id', toDelete.slice(i, i + 100)); } }
