@@ -65,12 +65,22 @@ Deno.serve(async (req) => {
     let requestedSlug: string | null = null;
     try { const body = await req.json(); if (body?.dataset_slug) requestedSlug = String(body.dataset_slug); } catch { /* no body */ }
 
-    let datasetQuery = supabase.from('student_datasets').select('*');
-    datasetQuery = requestedSlug ? datasetQuery.eq('slug', requestedSlug) : datasetQuery.eq('is_active', true);
-    const { data: datasetRows, error: datasetErr } = await datasetQuery.limit(1).single();
-    if (datasetErr || !datasetRows) return new Response(JSON.stringify({ success: false, error: requestedSlug ? `Dataset "${requestedSlug}" not found.` : 'No active dataset found.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-
-    const dataset = datasetRows as any;
+    let dataset: any = null;
+    if (requestedSlug) {
+      const { data } = await supabase.from('student_datasets').select('*').eq('slug', requestedSlug).maybeSingle();
+      dataset = data;
+    } else {
+      // Multiple datasets may be active (e.g. Results dataset). Pick the student-list one:
+      // skip slugs that look like results/marks, prefer lowest display_order.
+      const { data: actives } = await supabase
+        .from('student_datasets')
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order', { ascending: true });
+      const candidates = (actives ?? []).filter((d: any) => !/result|mark/i.test(d.slug || ''));
+      dataset = candidates[0] ?? (actives ?? [])[0] ?? null;
+    }
+    if (!dataset) return new Response(JSON.stringify({ success: false, error: requestedSlug ? `Dataset "${requestedSlug}" not found.` : 'No active dataset found.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     const slug = dataset.slug as string;
     const name = dataset.name as string;
     if (!dataset.sheet_url) return new Response(JSON.stringify({ success: false, error: `No CSV URL for "${name}".` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
