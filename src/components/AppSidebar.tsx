@@ -9,6 +9,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
+import { useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -41,6 +42,7 @@ export function AppSidebar() {
   const { user, userRole, userStatus, pageAccess, adminPanelAccess, signOut } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const { data: settings } = useSystemSettings();
+  const queryClient = useQueryClient();
 
   const visibleMainItems = mainItems.filter((item) => {
     if (userRole === "owner") return true;
@@ -53,9 +55,47 @@ export function AppSidebar() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("sync-google-sheet");
-      if (error) throw error;
-      toast.success(`Synced ${data?.synced ?? 0} students from Google Sheet`);
+      // Sync every active dataset (student list + results/marks).
+      const { data: datasets } = await supabase
+        .from("student_datasets")
+        .select("slug, name")
+        .eq("is_active", true);
+
+      const results: { name: string; ok: boolean; msg: string }[] = [];
+      for (const ds of datasets ?? []) {
+        const isResults = /result|mark/i.test(ds.slug);
+        if (isResults) {
+          // Results/marks dataset is read live from the sheet — refresh the cache.
+          const { data, error } = await supabase.functions.invoke("fetch-results-data", {
+            body: { dataset_slug: ds.slug },
+          });
+          if (error || data?.error) {
+            results.push({ name: ds.name, ok: false, msg: error?.message || data?.error || "fetch failed" });
+          } else {
+            results.push({ name: ds.name, ok: true, msg: `${data?.totalStudents ?? 0} students` });
+          }
+        } else {
+          const { data, error } = await supabase.functions.invoke("sync-google-sheet", {
+            body: { dataset_slug: ds.slug },
+          });
+          if (error || data?.success === false) {
+            results.push({ name: ds.name, ok: false, msg: error?.message || data?.error || "sync failed" });
+          } else {
+            results.push({ name: ds.name, ok: true, msg: `${data?.synced ?? 0} students` });
+          }
+        }
+      }
+
+      // Refresh cached data on screen.
+      queryClient.invalidateQueries({ queryKey: ["results-data"] });
+      queryClient.invalidateQueries({ queryKey: ["students"] });
+
+      const failed = results.filter(r => !r.ok);
+      if (failed.length === 0) {
+        toast.success(`Synced ${results.length} sheet(s): ` + results.map(r => `${r.name} (${r.msg})`).join(", "));
+      } else {
+        toast.error(`Sync issues: ` + failed.map(r => `${r.name}: ${r.msg}`).join("; "));
+      }
     } catch (err: any) {
       toast.error("Sync failed: " + (err.message || "Unknown error"));
     }
