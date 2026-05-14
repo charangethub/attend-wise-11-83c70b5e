@@ -204,12 +204,6 @@ const DailyAttendanceReport = () => {
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
-          {reportData.isHoliday ? (
-            <div className="border-2 border-foreground bg-blue-50 dark:bg-blue-950/30 px-6 py-12 text-center">
-              <p className="text-2xl font-extrabold uppercase tracking-wide text-blue-700 dark:text-blue-300">Holiday</p>
-              <p className="mt-2 text-sm text-muted-foreground">No attendance recorded — this day is marked as a holiday.</p>
-            </div>
-          ) : (
           <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent (A)", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
             <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={6} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
               <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
@@ -229,7 +223,6 @@ const DailyAttendanceReport = () => {
               <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.pct.toFixed(2)}%</td>
             </tr></tfoot>}
           </table>
-          )}
         </div>
       )}
     </div>
