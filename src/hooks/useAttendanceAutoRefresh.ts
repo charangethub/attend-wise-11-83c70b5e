@@ -11,6 +11,8 @@ type UseAttendanceAutoRefreshOptions = {
   session?: string;
   debounceMs?: number;
   watchStudents?: boolean;
+  watchPermissions?: boolean;
+  permissionDataset?: string;
 };
 
 export function useAttendanceAutoRefresh({
@@ -23,6 +25,8 @@ export function useAttendanceAutoRefresh({
   session,
   debounceMs = 1500,
   watchStudents = false,
+  watchPermissions = false,
+  permissionDataset,
 }: UseAttendanceAutoRefreshOptions) {
   useEffect(() => {
     if (!enabled) return;
@@ -85,11 +89,32 @@ export function useAttendanceAutoRefresh({
         },
       );
 
-    const channel = watchStudents
-      ? attendanceChannel.on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => {
+    let channel = attendanceChannel;
+
+    if (watchStudents) {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table: "students" }, () => {
           scheduleRefresh();
-        })
-      : attendanceChannel;
+        });
+    }
+
+    if (watchPermissions) {
+      channel = channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "student_permissions", ...(attendanceFilter ? { filter: attendanceFilter } : {}) },
+        (payload: any) => {
+          const record = payload.new ?? payload.old ?? {};
+          const recordDate = record.date as string | undefined;
+          const recordDataset = record.dataset as string | undefined;
+
+          if (exactDate && recordDate && recordDate !== exactDate) return;
+          if (fromDate && recordDate && recordDate < fromDate) return;
+          if (toDate && recordDate && recordDate > toDate) return;
+          if (permissionDataset && recordDataset && recordDataset !== permissionDataset) return;
+
+          scheduleRefresh();
+        },
+      );
+    }
 
     const subscription = channel.subscribe();
 
@@ -97,5 +122,5 @@ export function useAttendanceAutoRefresh({
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(subscription);
     };
-  }, [enabled, channelKey, onRefresh, exactDate, fromDate, toDate, session, debounceMs, watchStudents]);
+  }, [enabled, channelKey, onRefresh, exactDate, fromDate, toDate, session, debounceMs, watchStudents, watchPermissions, permissionDataset]);
 }
