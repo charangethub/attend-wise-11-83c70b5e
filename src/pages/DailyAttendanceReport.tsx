@@ -26,6 +26,20 @@ const DailyAttendanceReport = () => {
     try { localStorage.setItem("dailyReport.selectedBatches", JSON.stringify(selectedBatches)); } catch {}
   }, [selectedBatches]);
   const [filterOpen, setFilterOpen] = useState(false);
+  const ALL_COLUMNS = ["Strength", "Present", "Absent (A)", "Half Day", "Holiday", "%"] as const;
+  type ColKey = typeof ALL_COLUMNS[number];
+  const [hiddenColumns, setHiddenColumns] = useState<ColKey[]>(() => {
+    try {
+      const raw = localStorage.getItem("dailyReport.hiddenColumns");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("dailyReport.hiddenColumns", JSON.stringify(hiddenColumns)); } catch {}
+  }, [hiddenColumns]);
+  const [columnFilterOpen, setColumnFilterOpen] = useState(false);
+  const isColVisible = (c: ColKey) => !hiddenColumns.includes(c);
+  const toggleColumn = (c: ColKey) => setHiddenColumns(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
   const { data: settings } = useSystemSettings();
   const { datasetSlug: activeSlug } = usePageDataset("Daily Report");
 
@@ -85,34 +99,40 @@ const DailyAttendanceReport = () => {
     });
 
     const permissionStudentIds = new Set(permissions.map((permission: any) => permission.student_id).filter(Boolean));
-    const classMap: Record<string, { strength: number; present: number; absent: number; half: number }> = {};
+    const classMap: Record<string, { strength: number; present: number; absent: number; half: number; holiday: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
       if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
 
-      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, half: 0 };
+      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 };
+
+      // Strength always reflects enrolled students in the batch.
+      classMap[name].strength++;
 
       const sessions = studentSessions[s.id];
       const combined = sessions ? getCombinedStatus(sessions.AM, sessions.PM) : "";
-      if (combined === "H") return; // Holiday: do not include in strength or any count.
-
-      classMap[name].strength++;
-      if (permissionStudentIds.has(s.id) || combined === "L") classMap[name].half++;
+      if (combined === "H") classMap[name].holiday++;
+      else if (permissionStudentIds.has(s.id) || combined === "L") classMap[name].half++;
       else if (combined === "P") classMap[name].present++;
       else if (combined === "A") classMap[name].absent++;
       else if (combined) classMap[name].half++;
     });
 
-    const rows = Object.entries(classMap).map(([name, d]) => ({
-      batch: name,
-      strength: d.strength,
-      present: d.present,
-      absent: d.absent,
-      half: d.half,
-      pct: d.strength > 0 ? (d.present / d.strength) * 100 : 0,
-    })).sort((a, b) => a.batch.localeCompare(b.batch));
-    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half }), { strength: 0, present: 0, absent: 0, half: 0 });
-    return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 } };
+    const rows = Object.entries(classMap).map(([name, d]) => {
+      const denom = Math.max(0, d.strength - d.holiday);
+      return {
+        batch: name,
+        strength: d.strength,
+        present: d.present,
+        absent: d.absent,
+        half: d.half,
+        holiday: d.holiday,
+        pct: denom > 0 ? (d.present / denom) * 100 : 0,
+      };
+    }).sort((a, b) => a.batch.localeCompare(b.batch));
+    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half, holiday: acc.holiday + r.holiday }), { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 });
+    const totalDenom = Math.max(0, totals.strength - totals.holiday);
+    return { rows, totals: { ...totals, pct: totalDenom > 0 ? (totals.present / totalDenom) * 100 : 0 } };
   }, [students, attendance, permissions, selectedBatches]);
 
   const dateObj = new Date(selectedDate + "T00:00:00");
@@ -190,6 +210,65 @@ const DailyAttendanceReport = () => {
             </PopoverContent>
           </Popover>
 
+          {/* Columns Filter Popover */}
+          <Popover open={columnFilterOpen} onOpenChange={setColumnFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant={hiddenColumns.length > 0 ? "default" : "outline"}
+                size="sm"
+                className="gap-1.5"
+              >
+                <Filter className="h-4 w-4" />
+                Columns
+                {hiddenColumns.length > 0 && (
+                  <span className="ml-1 rounded-full bg-background text-foreground text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] text-center">
+                    {ALL_COLUMNS.length - hiddenColumns.length}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-0" align="end">
+              <div className="px-4 py-3 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">Filter Columns</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setHiddenColumns([])}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      All
+                    </button>
+                    <button
+                      onClick={() => setHiddenColumns([...ALL_COLUMNS])}
+                      className="text-xs font-medium text-muted-foreground hover:underline"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto py-1">
+                {ALL_COLUMNS.map(c => {
+                  const isSelected = isColVisible(c);
+                  return (
+                    <label
+                      key={c}
+                      className="flex items-center gap-3 px-4 py-2 hover:bg-muted/50 cursor-pointer transition-colors"
+                      onClick={() => toggleColumn(c)}
+                    >
+                      <div className={`h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                        isSelected ? "border-primary bg-primary" : "border-muted-foreground/40"
+                      }`}>
+                        {isSelected && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-sm text-foreground truncate">{c}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <Button variant="outline" size="icon" onClick={() => changeDate(-1)} className="h-8 w-8"><ChevronLeft className="h-4 w-4" /></Button>
           <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground" />
           <Button variant="outline" size="icon" onClick={() => changeDate(1)} className="h-8 w-8"><ChevronRight className="h-4 w-4" /></Button>
@@ -204,25 +283,49 @@ const DailyAttendanceReport = () => {
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
-          <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent (A)", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
-            <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={6} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
-              <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
-                <td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td>
-                <td className="border-2 border-foreground px-4 py-2 text-center text-foreground">{row.strength}</td>
-                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-success">{row.present}</td>
-                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-destructive">{row.absent}</td>
-                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-orange-600">{row.half}</td>
-                <td className="border-2 border-foreground px-4 py-2 text-center font-semibold text-foreground">{row.pct.toFixed(2)}%</td>
-              </tr>))}</tbody>
-            {reportData.rows.length > 0 && <tfoot><tr className="bg-primary/10 font-bold">
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-sm uppercase text-primary">Total</td>
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.strength}</td>
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-success">{reportData.totals.present}</td>
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-destructive">{reportData.totals.absent}</td>
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-orange-600">{reportData.totals.half}</td>
-              <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.pct.toFixed(2)}%</td>
-            </tr></tfoot>}
-          </table>
+          {(() => {
+            const visibleCols = ALL_COLUMNS.filter(isColVisible);
+            const colSpan = 1 + visibleCols.length;
+            const cellCls = "border-2 border-foreground px-4 py-2 text-center";
+            const cellFor = (c: ColKey, row: any) => {
+              switch (c) {
+                case "Strength": return <td key={c} className={`${cellCls} text-foreground`}>{row.strength}</td>;
+                case "Present": return <td key={c} className={`${cellCls} font-semibold text-success`}>{row.present}</td>;
+                case "Absent (A)": return <td key={c} className={`${cellCls} font-semibold text-destructive`}>{row.absent}</td>;
+                case "Half Day": return <td key={c} className={`${cellCls} font-semibold text-orange-600`}>{row.half}</td>;
+                case "Holiday": return <td key={c} className={`${cellCls} font-semibold text-blue-600`}>{row.holiday}</td>;
+                case "%": return <td key={c} className={`${cellCls} font-semibold text-foreground`}>{row.pct.toFixed(2)}%</td>;
+              }
+            };
+            const totalCellFor = (c: ColKey) => {
+              const base = "border-2 border-foreground px-4 py-2.5 text-center";
+              switch (c) {
+                case "Strength": return <td key={c} className={`${base} text-foreground`}>{reportData.totals.strength}</td>;
+                case "Present": return <td key={c} className={`${base} text-success`}>{reportData.totals.present}</td>;
+                case "Absent (A)": return <td key={c} className={`${base} text-destructive`}>{reportData.totals.absent}</td>;
+                case "Half Day": return <td key={c} className={`${base} text-orange-600`}>{reportData.totals.half}</td>;
+                case "Holiday": return <td key={c} className={`${base} text-blue-600`}>{reportData.totals.holiday}</td>;
+                case "%": return <td key={c} className={`${base} text-foreground`}>{reportData.totals.pct.toFixed(2)}%</td>;
+              }
+            };
+            return (
+              <table className="w-full border-collapse">
+                <thead><tr className="bg-primary/10">
+                  <th className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">Batch</th>
+                  {visibleCols.map(h => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}
+                </tr></thead>
+                <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={colSpan} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
+                  <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
+                    <td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td>
+                    {visibleCols.map(c => cellFor(c, row))}
+                  </tr>))}</tbody>
+                {reportData.rows.length > 0 && <tfoot><tr className="bg-primary/10 font-bold">
+                  <td className="border-2 border-foreground px-4 py-2.5 text-center text-sm uppercase text-primary">Total</td>
+                  {visibleCols.map(c => totalCellFor(c))}
+                </tr></tfoot>}
+              </table>
+            );
+          })()}
         </div>
       )}
     </div>
