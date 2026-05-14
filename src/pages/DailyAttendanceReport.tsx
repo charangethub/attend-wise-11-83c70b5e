@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSystemSettings } from "@/hooks/useSystemSettings";
 import { usePageDataset } from "@/hooks/usePageDataset";
@@ -14,6 +14,7 @@ const DailyAttendanceReport = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [permissions, setPermissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatches, setSelectedBatches] = useState<string[]>(() => {
     try {
@@ -38,8 +39,17 @@ const DailyAttendanceReport = () => {
         studentIds: studentRows.map((student: any) => student.id),
         exactDate: selectedDate,
       });
+      const { data: permissionRows, error: permissionError } = await supabase
+        .from("student_permissions" as any)
+        .select("student_id, permission_type")
+        .eq("date", selectedDate)
+        .eq("dataset", activeSlug);
+
+      if (permissionError) throw permissionError;
+
       setStudents(studentRows);
       setAttendance(attendanceRows);
+      setPermissions((permissionRows as any[]) ?? []);
     } finally {
       setLoading(false);
     }
@@ -53,6 +63,8 @@ const DailyAttendanceReport = () => {
     onRefresh: fetchData,
     exactDate: selectedDate,
     debounceMs: 500,
+    watchPermissions: true,
+    permissionDataset: activeSlug,
   });
 
   const dynamicCenter = useMemo(() => {
