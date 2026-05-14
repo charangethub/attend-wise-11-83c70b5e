@@ -72,21 +72,27 @@ const DailyAttendanceReport = () => {
       else studentSessions[a.student_id].PM = a.status;
     });
 
-    const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number }> = {};
+    const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number; holiday: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
       if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
 
-      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0 };
-      classMap[name].strength++;
+      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0, holiday: 0 };
 
       const sessions = studentSessions[s.id];
       if (sessions) {
         const combined = getCombinedStatus(sessions.AM, sessions.PM);
+        if (combined === "H") {
+          classMap[name].holiday++;
+          return; // Holiday: exclude from strength entirely
+        }
+        classMap[name].strength++;
         if (combined === "P") classMap[name].present++;
         else if (combined === "A") classMap[name].absent++;
         else if (combined === "L") classMap[name].leave++;
         else classMap[name].half++;
+      } else {
+        classMap[name].strength++;
       }
     });
 
@@ -96,10 +102,12 @@ const DailyAttendanceReport = () => {
       present: d.present,
       absent: d.absent + d.leave,
       half: d.half,
+      holiday: d.holiday,
       pct: d.strength > 0 ? (d.present / d.strength) * 100 : 0,
     })).sort((a, b) => a.batch.localeCompare(b.batch));
-    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half }), { strength: 0, present: 0, absent: 0, half: 0 });
-    return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 } };
+    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half, holiday: acc.holiday + r.holiday }), { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 });
+    const isHoliday = totals.strength === 0 && totals.holiday > 0;
+    return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 }, isHoliday };
   }, [students, attendance, selectedBatches]);
 
   const dateObj = new Date(selectedDate + "T00:00:00");
@@ -191,6 +199,12 @@ const DailyAttendanceReport = () => {
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
+          {reportData.isHoliday ? (
+            <div className="border-2 border-foreground bg-blue-50 dark:bg-blue-950/30 px-6 py-12 text-center">
+              <p className="text-2xl font-extrabold uppercase tracking-wide text-blue-700 dark:text-blue-300">Holiday</p>
+              <p className="mt-2 text-sm text-muted-foreground">No attendance recorded — this day is marked as a holiday.</p>
+            </div>
+          ) : (
           <table className="w-full border-collapse"><thead><tr className="bg-primary/10">{["Batch", "Strength", "Present", "Absent (A)", "Half Day", "%"].map((h) => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}</tr></thead>
             <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={6} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
               <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
@@ -210,6 +224,7 @@ const DailyAttendanceReport = () => {
               <td className="border-2 border-foreground px-4 py-2.5 text-center text-foreground">{reportData.totals.pct.toFixed(2)}%</td>
             </tr></tfoot>}
           </table>
+          )}
         </div>
       )}
     </div>
