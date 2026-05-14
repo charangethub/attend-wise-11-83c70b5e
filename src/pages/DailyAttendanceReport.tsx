@@ -84,43 +84,36 @@ const DailyAttendanceReport = () => {
       else studentSessions[a.student_id].PM = a.status;
     });
 
-    const classMap: Record<string, { strength: number; present: number; absent: number; leave: number; half: number; holiday: number }> = {};
+    const permissionStudentIds = new Set(permissions.map((permission: any) => permission.student_id).filter(Boolean));
+    const classMap: Record<string, { strength: number; present: number; absent: number; half: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
       if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
 
-      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, leave: 0, half: 0, holiday: 0 };
+      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, half: 0 };
 
       const sessions = studentSessions[s.id];
-      if (sessions) {
-        const combined = getCombinedStatus(sessions.AM, sessions.PM);
-        if (combined === "H") {
-          classMap[name].holiday++;
-          return; // Holiday: exclude from strength entirely
-        }
-        classMap[name].strength++;
-        if (combined === "P") classMap[name].present++;
-        else if (combined === "A") classMap[name].absent++;
-        else if (combined === "L") classMap[name].leave++;
-        else classMap[name].half++;
-      } else {
-        classMap[name].strength++;
-      }
+      const combined = sessions ? getCombinedStatus(sessions.AM, sessions.PM) : "";
+      if (combined === "H") return; // Holiday: do not include in strength or any count.
+
+      classMap[name].strength++;
+      if (permissionStudentIds.has(s.id) || combined === "L") classMap[name].half++;
+      else if (combined === "P") classMap[name].present++;
+      else if (combined === "A") classMap[name].absent++;
+      else if (combined) classMap[name].half++;
     });
 
     const rows = Object.entries(classMap).map(([name, d]) => ({
       batch: name,
       strength: d.strength,
       present: d.present,
-      absent: d.absent + d.leave,
+      absent: d.absent,
       half: d.half,
-      holiday: d.holiday,
       pct: d.strength > 0 ? (d.present / d.strength) * 100 : 0,
     })).sort((a, b) => a.batch.localeCompare(b.batch));
-    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half, holiday: acc.holiday + r.holiday }), { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 });
-    const isHoliday = totals.strength === 0 && totals.holiday > 0;
-    return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 }, isHoliday };
-  }, [students, attendance, selectedBatches]);
+    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half }), { strength: 0, present: 0, absent: 0, half: 0 });
+    return { rows, totals: { ...totals, pct: totals.strength > 0 ? (totals.present / totals.strength) * 100 : 0 } };
+  }, [students, attendance, permissions, selectedBatches]);
 
   const dateObj = new Date(selectedDate + "T00:00:00");
   const dateLabel = format(dateObj, "dd/MMM/yyyy");
