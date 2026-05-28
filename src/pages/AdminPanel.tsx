@@ -410,7 +410,7 @@ const AdminPanel = () => {
                       try {
                         const { data, error } = await supabase.functions.invoke("test-sync-target", { body: { url: t.apps_script_url } });
                         if (error) { toast.error(`❌ ${t.label}: ${error.message}`); }
-                        else if (data?.success) toast.success(`✅ ${t.label} is working (${data.elapsed_ms}ms)`);
+                        else if (data?.success) toast.success(`✅ ${t.label} is working${data.warning ? ` — ${data.warning}` : ""} (${data.elapsed_ms}ms)`, { duration: data.warning ? 9000 : 4000 });
                         else toast.error(`❌ ${t.label}: ${data?.error ?? "Failed"}`, { duration: 12000 });
                       } catch (e: any) { toast.error("Test failed: " + (e?.message ?? "Unknown")); }
                       setTestingTarget(null);
@@ -427,11 +427,11 @@ const AdminPanel = () => {
             })}
             {lastSyncAt && <p className="text-xs text-muted-foreground">Last sync: {format(new Date(lastSyncAt), "dd MMM yyyy, hh:mm a")}</p>}
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+              <Button onClick={() => handlePushSync("attendance")} disabled={syncingPush || syncTargets.filter(t => t.is_active && (t.purpose ?? "attendance") === "attendance").length === 0} variant="outline" className="gap-1.5">
                 {syncingPush ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpToLine className="h-4 w-4" />}
                 Push Today's Attendance (fast)
               </Button>
-              <Button onClick={() => handlePushSync("full")} disabled={syncingPush || syncTargets.filter(t => t.is_active).length === 0} variant="outline" className="gap-1.5">
+              <Button onClick={() => handlePushSync("full")} disabled={syncingPush || syncTargets.filter(t => t.is_active && (t.purpose ?? "attendance") === "attendance").length === 0} variant="outline" className="gap-1.5">
                 <ArrowUpToLine className="h-4 w-4" />
                 Push Full (incl. Master Student List)
               </Button>
