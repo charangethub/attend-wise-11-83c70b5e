@@ -34,14 +34,23 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    // Get active dataset
+    // Get the dataset assigned to the Mark Attendance page. Falling back to any
+    // active dataset caused attendance/absentee syncs to be empty when another
+    // dataset (for example Results) happened to be returned first.
+    const { data: attendanceMapping } = await supabase
+      .from('page_dataset_mapping')
+      .select('dataset_slug, dataset_name')
+      .eq('page_name', 'Mark Attendance')
+      .maybeSingle();
+
+    // Fallback for older setups without a page mapping.
     const { data: activeDataset } = await supabase
       .from('student_datasets')
       .select('slug, name')
       .eq('is_active', true)
       .limit(1)
       .single();
-    const activeSlug = activeDataset?.slug ?? null;
+    const activeSlug = attendanceMapping?.dataset_slug ?? activeDataset?.slug ?? null;
 
     // Filter students by active dataset. Do NOT require roll_no here:
     // new students may only have user_id_vedantu, but their attendance still must sync.
