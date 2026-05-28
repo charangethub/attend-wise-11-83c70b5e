@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Mail } from "lucide-react";
+import { SEO } from "@/components/SEO";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -23,7 +24,13 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <SEO
+        title="Forgot Password — Vedantu Attendance"
+        description="Reset your Vedantu Attendance staff account password. Enter your email and we'll send a secure reset link."
+        path="/forgot-password"
+      />
+      <h1 className="sr-only">Forgot your password</h1>
       <Card className="w-full max-w-md border-border shadow-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
@@ -50,7 +57,7 @@ const ForgotPassword = () => {
           )}
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 };
 export default ForgotPassword;
