@@ -1,0 +1,9 @@
+# Vedantu Attendance
+
+> Internal attendance and operations management system for Vedantu learning centres. Staff sign in to track daily student attendance, absentee call logs, exam marks, inventory, and asset distribution.
+
+## Pages
+
+- [Sign In](/login): Staff sign-in page for the Vedantu Attendance Management System.
+- [Sign Up](/signup): Request a new staff account (subject to owner approval).
+- [Forgot Password](/forgot-password): Send a password reset link to your staff email.
