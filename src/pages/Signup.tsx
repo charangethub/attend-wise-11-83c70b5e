@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, EyeOff, UserPlus } from "lucide-react";
+import { SEO } from "@/components/SEO";
 
 const Signup = () => {
   const [fullName, setFullName] = useState("");
@@ -31,7 +32,13 @@ const Signup = () => {
 
   if (signupDone) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <main className="flex min-h-screen items-center justify-center bg-background p-4">
+        <SEO
+          title="Verify Your Email — Vedantu Attendance"
+          description="Check your email for a verification link to finish creating your Vedantu Attendance staff account."
+          path="/signup"
+        />
+        <h1 className="sr-only">Verify your email</h1>
         <Card className="w-full max-w-md border-border shadow-lg">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-success">
@@ -45,12 +52,18 @@ const Signup = () => {
             <Link to="/login"><Button variant="outline" className="w-full">Back to Sign In</Button></Link>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="flex min-h-screen items-center justify-center bg-background p-4">
+      <SEO
+        title="Create Account — Vedantu Attendance"
+        description="Request a staff account for the Vedantu Attendance Management System. New accounts require owner approval before access is granted."
+        path="/signup"
+      />
+      <h1 className="sr-only">Create a Vedantu Attendance account</h1>
       <Card className="w-full max-w-md border-border shadow-lg">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary">
@@ -73,7 +86,7 @@ const Signup = () => {
               <Label htmlFor="signup-password">Password</Label>
               <div className="relative">
                 <Input id="signup-password" type={showPassword ? "text" : "password"} placeholder="Min 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required />
-                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
+                <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowPassword(!showPassword)}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -86,7 +99,7 @@ const Signup = () => {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 };
 export default Signup;

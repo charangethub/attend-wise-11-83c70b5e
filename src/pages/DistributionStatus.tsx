@@ -394,12 +394,12 @@ const DistributionStatus = () => {
     <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+          <button aria-label="Back to dashboard" onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex items-center gap-2">
             <Package className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-bold text-foreground">Distribution Status</h2>
+            <h1 className="text-2xl font-bold text-foreground">Distribution Status</h1>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
