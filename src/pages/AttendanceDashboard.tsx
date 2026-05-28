@@ -326,7 +326,7 @@ const AttendanceDashboard = () => {
           <button aria-label="Back to dashboard" onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold text-foreground">Mark Attendance</h2>
+              <h1 className="text-2xl font-bold text-foreground">Mark Attendance</h1>
               <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">{activeName}</span>
             </div>
             <p className="text-sm text-muted-foreground">{filteredStudents.length} students</p>

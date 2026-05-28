@@ -305,7 +305,7 @@ const Inventory = () => {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <button aria-label="Back to dashboard" onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
-          <div className="flex items-center gap-2"><Package className="h-6 w-6 text-primary" /><h2 className="text-2xl font-bold text-foreground">Inventory Dashboard</h2></div>
+          <div className="flex items-center gap-2"><Package className="h-6 w-6 text-primary" /><h1 className="text-2xl font-bold text-foreground">Inventory Dashboard</h1></div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isAdminOrOwner && <Button onClick={() => setAddStockOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add Stock</Button>}

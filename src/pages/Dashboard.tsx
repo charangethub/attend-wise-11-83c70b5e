@@ -37,9 +37,9 @@ const Dashboard = () => {
   return (
     <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-foreground">
+        <h1 className="text-2xl font-bold text-foreground">
           {greeting()}, {displayName} 👋
-        </h2>
+        </h1>
         <p className="text-sm text-muted-foreground">
           Your role: <span className="font-semibold text-primary">{userRole ?? "pending approval"}</span>
           {settings?.last_sync_at && (
