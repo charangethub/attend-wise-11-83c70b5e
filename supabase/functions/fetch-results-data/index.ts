@@ -59,7 +59,29 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+    // Require authenticated, approved user (owner/admin/active teacher)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader?.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    const authClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authHeader } } });
+    const { data: { user }, error: userErr } = await authClient.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (userErr || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
     const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const [{ data: roleRow }, { data: statusRow }] = await Promise.all([
+      supabase.from('user_roles').select('role').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_status').select('status').eq('user_id', user.id).maybeSingle(),
+    ]);
+    const role = (roleRow as any)?.role;
+    const status = (statusRow as any)?.status;
+    const allowed = role === 'owner' || ((role === 'admin' || role === 'teacher') && status === 'active');
+    if (!allowed) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     const body = await req.json().catch(() => ({}));
     const datasetSlug: string | undefined = body?.dataset_slug;
