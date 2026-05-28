@@ -161,7 +161,10 @@ Deno.serve(async (req) => {
               const timeout = setTimeout(() => controller.abort(), 60000);
               const res = await fetch(target.apps_script_url.trim(), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                // Apps Script Web Apps sometimes behave inconsistently with
+                // application/json. Sending JSON as text/plain avoids Apps
+                // Script/CORS quirks while preserving the exact payload body.
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify(payload),
                 redirect: 'follow',
                 signal: controller.signal,
