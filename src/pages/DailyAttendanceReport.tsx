@@ -279,7 +279,7 @@ const DailyAttendanceReport = () => {
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
         <div className="mx-auto max-w-3xl bg-card shadow-lg print:shadow-none">
           <div className="border-2 border-foreground bg-primary/5 px-6 py-4 text-center">
-            <h1 className="text-xl font-extrabold tracking-wide text-primary uppercase">VEDANTU LEARNING CENTRE</h1>
+            <h1 className="text-xl font-extrabold tracking-wide text-primary uppercase">Daily Attendance Report — Vedantu Learning Centre</h1>
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
             <p className="mt-1 text-sm font-semibold text-foreground">DATE&nbsp; {dateLabel}</p>
           </div>
