@@ -323,7 +323,7 @@ const AttendanceDashboard = () => {
     <div className="container mx-auto px-4 py-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
+          <button aria-label="Back to dashboard" onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold text-foreground">Mark Attendance</h2>

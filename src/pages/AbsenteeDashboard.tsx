@@ -306,7 +306,7 @@ const AbsenteeDashboard = () => {
     <div className="w-full px-4 py-6 max-w-none">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
+          <button aria-label="Back to dashboard" onClick={() => navigate("/dashboard")} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"><ArrowLeft className="h-5 w-5" /></button>
           <div><h2 className="text-2xl font-bold text-foreground">Daily Absentee Report</h2><p className="text-sm text-muted-foreground">{absentees.length} absent students</p></div>
         </div>
         <div className="flex items-center gap-2">
