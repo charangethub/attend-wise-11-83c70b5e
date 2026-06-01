@@ -186,7 +186,11 @@ const AttendanceRecords = () => {
       if (!matchesName && !matchesRoll && !matchesUserId) return false;
     }
     return true;
-  }).sort((a: any, b: any) => a.roll_no.localeCompare(b.roll_no)), [students, enrollmentFilter, classroomFilter, searchQuery, isOwner]);
+  }).sort((a: any, b: any) => {
+    const c = (a.classroom_name || "").localeCompare(b.classroom_name || "");
+    if (c !== 0) return c;
+    return (a.roll_no || "").localeCompare(b.roll_no || "");
+  }), [students, enrollmentFilter, classroomFilter, searchQuery, isOwner]);
 
   const getStudentSummary = (studentId: string) => {
     const days = attMap[studentId] || {};
