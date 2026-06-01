@@ -456,8 +456,14 @@ const AttendanceDashboard = () => {
       )}
 
       {viewMode === "card" ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filteredStudents.map((s) => (
+        <div className="space-y-6">
+          {groupedByClassroom.map((g) => (
+            <div key={g.classroom}>
+              <div className="sticky top-0 z-10 mb-2 rounded-md bg-primary/15 px-3 py-1.5 text-xs font-bold text-primary backdrop-blur">
+                📚 {g.classroom} <span className="text-muted-foreground font-medium">({g.students.length})</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {g.students.map((s) => (
             <div key={s.id} className={`rounded-xl border p-3 transition-all ${attendance[s.id] === "P" ? "border-success/50 bg-success/5" : attendance[s.id] === "A" ? "border-destructive/50 bg-destructive/5" : attendance[s.id] === "H" ? "border-purple-400/50 bg-purple-50" : "border-border bg-card"}`}>
               <div className="mb-2">
                 <span className="inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary">{s.roll_no}</span>
@@ -477,6 +483,9 @@ const AttendanceDashboard = () => {
                 </button>
               )}
             </div>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       ) : (
@@ -494,7 +503,12 @@ const AttendanceDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.map((s, i) => (
+              {groupedByClassroom.map((g) => (
+                <>
+                  <tr key={`hdr-${g.classroom}`} className="border-t border-border bg-primary/10">
+                    <td colSpan={7} className="px-3 py-2 text-xs font-bold text-primary">📚 {g.classroom} <span className="text-muted-foreground font-medium">({g.students.length})</span></td>
+                  </tr>
+                  {g.students.map((s, i) => (
                 <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                   <td className="px-3 py-2.5 font-medium text-foreground">{s.roll_no}</td>
                   <td className="px-3 py-2.5 text-foreground">{s.student_name}</td>
@@ -520,6 +534,8 @@ const AttendanceDashboard = () => {
                     )}
                   </td>
                 </tr>
+                  ))}
+                </>
               ))}
             </tbody>
           </table>
