@@ -592,8 +592,10 @@ const DistributionStatus = () => {
                       </td>
                     );
                   })}
-                </tr>
-              ))}
+                  </tr>
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
