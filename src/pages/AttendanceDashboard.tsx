@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -504,8 +504,8 @@ const AttendanceDashboard = () => {
             </thead>
             <tbody>
               {groupedByClassroom.map((g) => (
-                <>
-                  <tr key={`hdr-${g.classroom}`} className="border-t border-border bg-primary/10">
+                <Fragment key={g.classroom}>
+                  <tr className="border-t border-border bg-primary/10">
                     <td colSpan={7} className="px-3 py-2 text-xs font-bold text-primary">📚 {g.classroom} <span className="text-muted-foreground font-medium">({g.students.length})</span></td>
                   </tr>
                   {g.students.map((s, i) => (
@@ -535,7 +535,7 @@ const AttendanceDashboard = () => {
                   </td>
                 </tr>
                   ))}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
