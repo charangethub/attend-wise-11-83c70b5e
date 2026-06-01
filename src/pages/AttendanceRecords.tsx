@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import { getDaysInMonth, format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -269,11 +269,21 @@ const AttendanceRecords = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((s: any, idx: number) => {
+                {filteredStudents.map((s: any, idx: number, arr: any[]) => {
                   const days = attMap[s.id] || {};
                   const rowBg = idx % 2 === 0 ? "bg-card" : "bg-muted/40";
+                  const prev = arr[idx - 1];
+                  const showHeader = !prev || prev.classroom_name !== s.classroom_name;
+                  const groupCount = arr.filter((x: any) => x.classroom_name === s.classroom_name).length;
+                  const colCount = 7 + daysInMonth;
                   return (
-                    <tr key={s.id}>
+                    <Fragment key={s.id}>
+                      {showHeader && (
+                        <tr className="bg-primary/10">
+                          <td colSpan={colCount} className="sticky left-0 z-20 bg-primary/10 px-2 py-1.5 text-xs font-bold text-primary border-b border-border">📚 {s.classroom_name || "Unassigned"} <span className="text-muted-foreground font-medium">({groupCount})</span></td>
+                        </tr>
+                      )}
+                      <tr>
                       <td className={`sticky left-0 z-20 ${rowBg} px-2 py-1.5 font-medium border-b border-border`}>{s.roll_no}</td>
                       {isOwner && <td className={`sticky z-20 ${rowBg} px-2 py-1.5 text-muted-foreground text-[10px] font-mono truncate max-w-[90px] border-b border-border`} style={{ left: 80 }} title={s.user_id_vedantu}>{s.user_id_vedantu || "—"}</td>}
                       <td className={`sticky z-20 ${rowBg} px-2 py-1.5 truncate max-w-[140px] border-b border-border`} style={{ left: isOwner ? 170 : 80 }}>{s.student_name}</td>
@@ -298,7 +308,8 @@ const AttendanceRecords = () => {
                           </td>
                         );
                       })}
-                    </tr>
+                      </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
