@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -243,7 +243,11 @@ const AbsenteeDashboard = () => {
         if (statusFilter === "absent_no_remark") return !s.callLog;
         return true;
       })
-      .sort((a, b) => (a.roll_no || a.user_id_vedantu || "").localeCompare(b.roll_no || b.user_id_vedantu || ""));
+      .sort((a, b) => {
+        const c = (a.classroom_name || "").localeCompare(b.classroom_name || "");
+        if (c !== 0) return c;
+        return (a.roll_no || a.user_id_vedantu || "").localeCompare(b.roll_no || b.user_id_vedantu || "");
+      });
   }, [students, attendance, classroomFilter, debouncedSearch, statusFilter, callLogs]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s: any) => s.classroom_name).filter(Boolean))).sort(), [students]);
@@ -336,12 +340,20 @@ const AbsenteeDashboard = () => {
             <th className="px-4 py-2.5 text-center font-semibold">History</th>
             <th className="px-4 py-2.5 text-center font-semibold">WhatsApp</th>
           </tr></thead>
-            <tbody>{absentees.map((s, i) => {
+            <tbody>{absentees.map((s, i, arr) => {
               const ec1 = s.emergency_contact_1 || ""; const ec2 = s.emergency_contact_2 || "";
               const wa1 = ec1 ? makeWhatsAppUrl(ec1, s.student_name, s.roll_no, s.status) : null;
               const wa2 = ec2 ? makeWhatsAppUrl(ec2, s.student_name, s.roll_no, s.status) : null;
+              const showHeader = !arr[i - 1] || arr[i - 1].classroom_name !== s.classroom_name;
+              const groupCount = arr.filter((x: any) => x.classroom_name === s.classroom_name).length;
               return (
-                <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+                <Fragment key={s.id}>
+                  {showHeader && (
+                    <tr className="bg-primary/10 border-t border-border">
+                      <td colSpan={9} className="px-4 py-2 text-xs font-bold text-primary">📚 {s.classroom_name || "Unassigned"} <span className="text-muted-foreground font-medium">({groupCount})</span></td>
+                    </tr>
+                  )}
+                  <tr className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                   <td className="px-4 py-2.5 font-medium">{s.roll_no}</td>
                   <td className="px-4 py-2.5 font-medium">{s.student_name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{s.classroom_name}</td>
@@ -379,6 +391,7 @@ const AbsenteeDashboard = () => {
                     </div>
                   </td>
                 </tr>
+                </Fragment>
               );
             })}</tbody>
           </table>
