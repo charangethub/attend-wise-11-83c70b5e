@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,6 +64,10 @@ export default function ExamDashboard({ examType, title }: { examType: ExamType;
       return s.studentName.toLowerCase().includes(q)
         || s.rollNumber.toLowerCase().includes(q)
         || s.userId.toLowerCase().includes(q);
+    }).sort((a, b) => {
+      const c = (a.classroom || "").localeCompare(b.classroom || "");
+      if (c !== 0) return c;
+      return (a.rollNumber || "").localeCompare(b.rollNumber || "");
     });
   }, [students, search, classFilter, statusFilter]);
 
@@ -215,14 +219,23 @@ export default function ExamDashboard({ examType, title }: { examType: ExamType;
             </tr>
           </thead>
           <tbody>
-            {filteredStudents.map((s, i) => {
+            {filteredStudents.map((s, i, arr) => {
               const subs = getSubjectsForCurriculum(s.curriculum);
               const m = marksByStudent.get(s.userId) ?? {};
               let totMax = 0, totObt = 0;
               for (const sub of subs) { totMax += m[sub]?.max ?? 0; totObt += m[sub]?.obtained ?? 0; }
               const pct = totMax > 0 ? ((totObt / totMax) * 100).toFixed(1) : '0.0';
+              const showHeader = !arr[i - 1] || arr[i - 1].classroom !== s.classroom;
+              const groupCount = arr.filter(x => x.classroom === s.classroom).length;
+              const colCount = 8 + subs.length * 2 + 4;
               return (
-                <tr key={s.userId || i} className={i % 2 ? 'bg-muted/10' : ''}>
+                <Fragment key={s.userId || i}>
+                  {showHeader && (
+                    <tr className="bg-primary/10">
+                      <td colSpan={colCount} className="px-2 py-1.5 text-xs font-bold text-primary">📚 {s.classroom || "Unassigned"} <span className="text-muted-foreground font-medium">({groupCount})</span></td>
+                    </tr>
+                  )}
+                  <tr className={i % 2 ? 'bg-muted/10' : ''}>
                   <td className="px-2 py-1.5">{i + 1}</td>
                   <td className="px-2 py-1.5 font-mono">{s.userId}</td>
                   <td className="px-2 py-1.5">{s.rollNumber}</td>
@@ -249,6 +262,7 @@ export default function ExamDashboard({ examType, title }: { examType: ExamType;
                     </Button>
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
             {filteredStudents.length === 0 && (
