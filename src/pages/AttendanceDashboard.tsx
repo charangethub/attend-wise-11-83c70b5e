@@ -199,7 +199,26 @@ const AttendanceDashboard = () => {
     if (statusFilter === "A" && attendance[s.id] !== "A") return false;
     if (statusFilter === "H" && attendance[s.id] !== "H") return false;
     return true;
-  }).sort((a, b) => (a.roll_no || "").localeCompare(b.roll_no || "")), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
+  }).sort((a, b) => {
+    const c = (a.classroom_name || "").localeCompare(b.classroom_name || "");
+    if (c !== 0) return c;
+    return (a.roll_no || "").localeCompare(b.roll_no || "");
+  }), [students, enrollmentFilter, classroomFilter, searchQuery, showUnmarkedOnly, attendance, statusFilter]);
+
+  // Group filtered students by classroom for display
+  const groupedByClassroom = useMemo(() => {
+    const groups: { classroom: string; students: Student[] }[] = [];
+    let cur: { classroom: string; students: Student[] } | null = null;
+    for (const s of filteredStudents) {
+      const key = s.classroom_name || "Unassigned";
+      if (!cur || cur.classroom !== key) {
+        cur = { classroom: key, students: [] };
+        groups.push(cur);
+      }
+      cur.students.push(s);
+    }
+    return groups;
+  }, [filteredStudents]);
 
   const hasUnsavedChanges = JSON.stringify(attendance) !== JSON.stringify(originalAttendance) || JSON.stringify(remarks) !== JSON.stringify(originalRemarks);
   const markedCount = filteredStudents.filter((s) => attendance[s.id]).length;
