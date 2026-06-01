@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -172,11 +172,7 @@ const DistributionStatus = () => {
         if (!s.student_name.toLowerCase().includes(q) && !s.roll_no.toLowerCase().includes(q)) return false;
       }
       return true;
-    }).sort((a, b) => {
-      const c = (a.classroom_name || "").localeCompare(b.classroom_name || "");
-      if (c !== 0) return c;
-      return (a.roll_no || "").localeCompare(b.roll_no || "");
-    });
+    }).sort((a, b) => a.roll_no.localeCompare(b.roll_no));
   }, [students, classroomFilter, debouncedSearch]);
 
   // For each item type: how many UNITS distributed (sum of quantity over GIVEN rows)
@@ -514,17 +510,8 @@ const DistributionStatus = () => {
               ))}
             </tr></thead>
             <tbody>
-              {filtered.map((s, i, arr) => {
-                const showHeader = !arr[i - 1] || arr[i - 1].classroom_name !== s.classroom_name;
-                const groupCount = arr.filter(x => x.classroom_name === s.classroom_name).length;
-                return (
-                <Fragment key={s.id}>
-                  {showHeader && (
-                    <tr className="bg-primary/10 border-t border-border">
-                      <td colSpan={ITEM_TYPES.length + 1} className="px-3 py-2 text-xs font-bold text-primary">📚 {s.classroom_name || "Unassigned"} <span className="text-muted-foreground font-medium">({groupCount})</span></td>
-                    </tr>
-                  )}
-                  <tr className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
+              {filtered.map((s, i) => (
+                <tr key={s.id} className={`border-t border-border ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}>
                   <td className="px-3 py-2.5 whitespace-nowrap">
                     <span className="font-medium">{s.student_name}</span>
                     <span className="text-xs text-muted-foreground ml-1">({s.roll_no})</span>
@@ -592,10 +579,8 @@ const DistributionStatus = () => {
                       </td>
                     );
                   })}
-                  </tr>
-                </Fragment>
-                );
-              })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
