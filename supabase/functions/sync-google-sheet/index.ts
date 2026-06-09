@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
     if (!dataset.sheet_url) return new Response(JSON.stringify({ success: false, error: `No CSV URL for "${name}".` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const csvUrl = normalizeCsvUrl(dataset.sheet_url);
+    console.log('[sync-google-sheet] run start', { dataset_slug: slug, dataset_name: name, sheet_url: dataset.sheet_url, normalized_csv_url: csvUrl });
     const csvResponse = await fetch(csvUrl);
     if (!csvResponse.ok) return new Response(JSON.stringify({ success: false, error: `Failed to fetch: HTTP ${csvResponse.status}` }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     const csvText = await csvResponse.text();
@@ -117,6 +118,15 @@ Deno.serve(async (req) => {
     const classroomNameFallbackIdx = findColumnIndex(headers, ['classroom_name']);
     const classroomNameIdx = classroomPrimaryIdx >= 0 ? classroomPrimaryIdx : classroomNameFallbackIdx;
     const classroomIdIdx = findColumnIndex(headers, ['classroom_id', 'room_id']);
+    console.log('[sync-google-sheet] header resolution', {
+      total_headers: headers.length,
+      raw_headers: rows[0],
+      normalized_headers: headers,
+      classroom_primary: { index: classroomPrimaryIdx, raw: classroomPrimaryIdx >= 0 ? rows[0][classroomPrimaryIdx] : null, normalized: classroomPrimaryIdx >= 0 ? headers[classroomPrimaryIdx] : null },
+      classroom_name_fallback: { index: classroomNameFallbackIdx, raw: classroomNameFallbackIdx >= 0 ? rows[0][classroomNameFallbackIdx] : null, normalized: classroomNameFallbackIdx >= 0 ? headers[classroomNameFallbackIdx] : null },
+      classroom_used: { index: classroomNameIdx, raw: classroomNameIdx >= 0 ? rows[0][classroomNameIdx] : null, normalized: classroomNameIdx >= 0 ? headers[classroomNameIdx] : null, source: classroomPrimaryIdx >= 0 ? 'Classroom' : (classroomNameFallbackIdx >= 0 ? 'Classroom Name (fallback)' : 'none') },
+      classroom_id: { index: classroomIdIdx, raw: classroomIdIdx >= 0 ? rows[0][classroomIdIdx] : null, normalized: classroomIdIdx >= 0 ? headers[classroomIdIdx] : null },
+    });
     const enrollmentDateIdx = findColumnIndex(headers, ['enrollment_date', 'enroll_date', 'join_date']);
     const enrollmentStatusIdx = findColumnIndex(headers, ['enrollment_status', 'enroll_status', 'status']);
     const ec1Idx = findColumnIndex(headers, ['emergency_contact_number_1', 'emergency_contact_1', 'contact_1', 'parent_contact', 'contact', 'phone', 'mobile', 'registered_contact']);
@@ -216,6 +226,7 @@ Deno.serve(async (req) => {
 
     await supabase.from('student_datasets').update({ updated_at: new Date().toISOString() }).eq('slug', slug);
     await supabase.from('system_settings').upsert({ key: 'last_sync_at', value: new Date().toISOString() }, { onConflict: 'key' });
+    console.log('[sync-google-sheet] run complete', { dataset_slug: slug, synced, total_rows: students.length, upsert_errors: upsertErrors.length });
 
     return new Response(JSON.stringify({ success: true, synced, total: students.length, dataset_slug: slug, dataset_name: name, warning: upsertErrors.length > 0 ? `${upsertErrors.length} failed: ${upsertErrors[0]}` : undefined }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   } catch (error) {
