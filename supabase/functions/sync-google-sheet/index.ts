@@ -44,6 +44,11 @@ function findColumnIndex(headers: string[], matchers: string[]): number {
   return -1;
 }
 
+function findExactColumnIndex(headers: string[], matchers: string[]): number {
+  for (const matcher of matchers) { const idx = headers.findIndex(h => h === matcher); if (idx >= 0) return idx; }
+  return -1;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   try {
@@ -111,12 +116,13 @@ Deno.serve(async (req) => {
     const curriculumIdx = findColumnIndex(headers, ['curriculium', 'curriculum', 'course']);
     const gradeIdx = findColumnIndex(headers, ['grade', 'class', 'std']);
     const batchTypeIdx = findColumnIndex(headers, ['batch_type', 'batch', 'type']);
-    // The source sheet has two columns: "Classroom" (the real classroom assignment, e.g. -A)
-    // and "Classroom Name" (legacy/derived, often -B). The website should display the
-    // "Classroom" column. Prefer it; fall back to "Classroom Name" when absent.
-    const classroomPrimaryIdx = findColumnIndex(headers, ['classroom', 'room', 'section']);
-    const classroomNameFallbackIdx = findColumnIndex(headers, ['classroom_name']);
-    const classroomNameIdx = classroomPrimaryIdx >= 0 ? classroomPrimaryIdx : classroomNameFallbackIdx;
+    // Prefer an exact "Classroom" column only when it exists. If the sheet only has
+    // column G "Classroom Name", use that exact column and do not let the loose
+    // "classroom" matcher accidentally label it as the primary Classroom column.
+    const classroomPrimaryIdx = findExactColumnIndex(headers, ['classroom', 'room', 'section']);
+    const classroomNameFallbackIdx = findExactColumnIndex(headers, ['classroom_name']);
+    const classroomLooseIdx = findColumnIndex(headers, ['classroom_name', 'classroom', 'room', 'section']);
+    const classroomNameIdx = classroomPrimaryIdx >= 0 ? classroomPrimaryIdx : (classroomNameFallbackIdx >= 0 ? classroomNameFallbackIdx : classroomLooseIdx);
     const classroomIdIdx = findColumnIndex(headers, ['classroom_id', 'room_id']);
     console.log('[sync-google-sheet] header resolution', {
       total_headers: headers.length,
@@ -124,7 +130,7 @@ Deno.serve(async (req) => {
       normalized_headers: headers,
       classroom_primary: { index: classroomPrimaryIdx, raw: classroomPrimaryIdx >= 0 ? rows[0][classroomPrimaryIdx] : null, normalized: classroomPrimaryIdx >= 0 ? headers[classroomPrimaryIdx] : null },
       classroom_name_fallback: { index: classroomNameFallbackIdx, raw: classroomNameFallbackIdx >= 0 ? rows[0][classroomNameFallbackIdx] : null, normalized: classroomNameFallbackIdx >= 0 ? headers[classroomNameFallbackIdx] : null },
-      classroom_used: { index: classroomNameIdx, raw: classroomNameIdx >= 0 ? rows[0][classroomNameIdx] : null, normalized: classroomNameIdx >= 0 ? headers[classroomNameIdx] : null, source: classroomPrimaryIdx >= 0 ? 'Classroom' : (classroomNameFallbackIdx >= 0 ? 'Classroom Name (fallback)' : 'none') },
+      classroom_used: { index: classroomNameIdx, raw: classroomNameIdx >= 0 ? rows[0][classroomNameIdx] : null, normalized: classroomNameIdx >= 0 ? headers[classroomNameIdx] : null, source: classroomPrimaryIdx >= 0 ? 'Classroom' : (classroomNameFallbackIdx >= 0 ? 'Classroom Name column G' : (classroomLooseIdx >= 0 ? 'loose classroom fallback' : 'none')) },
       classroom_id: { index: classroomIdIdx, raw: classroomIdIdx >= 0 ? rows[0][classroomIdIdx] : null, normalized: classroomIdIdx >= 0 ? headers[classroomIdIdx] : null },
     });
     const enrollmentDateIdx = findColumnIndex(headers, ['enrollment_date', 'enroll_date', 'join_date']);
