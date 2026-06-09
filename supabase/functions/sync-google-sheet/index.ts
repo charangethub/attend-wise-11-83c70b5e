@@ -37,6 +37,9 @@ function normalizeCsvUrl(url: string): string {
 }
 
 function findColumnIndex(headers: string[], matchers: string[]): number {
+  // Prefer exact matches first to avoid "classroom" being matched by a "classroom_name" rule
+  // (or vice-versa) when both columns exist in the sheet.
+  for (const matcher of matchers) { const idx = headers.findIndex(h => h === matcher); if (idx >= 0) return idx; }
   for (const matcher of matchers) { const idx = headers.findIndex(h => h.includes(matcher)); if (idx >= 0) return idx; }
   return -1;
 }
@@ -107,7 +110,12 @@ Deno.serve(async (req) => {
     const curriculumIdx = findColumnIndex(headers, ['curriculium', 'curriculum', 'course']);
     const gradeIdx = findColumnIndex(headers, ['grade', 'class', 'std']);
     const batchTypeIdx = findColumnIndex(headers, ['batch_type', 'batch', 'type']);
-    const classroomNameIdx = findColumnIndex(headers, ['classroom_name', 'classroom', 'room', 'section']);
+    // The source sheet has two columns: "Classroom" (the real classroom assignment, e.g. -A)
+    // and "Classroom Name" (legacy/derived, often -B). The website should display the
+    // "Classroom" column. Prefer it; fall back to "Classroom Name" when absent.
+    const classroomPrimaryIdx = findColumnIndex(headers, ['classroom', 'room', 'section']);
+    const classroomNameFallbackIdx = findColumnIndex(headers, ['classroom_name']);
+    const classroomNameIdx = classroomPrimaryIdx >= 0 ? classroomPrimaryIdx : classroomNameFallbackIdx;
     const classroomIdIdx = findColumnIndex(headers, ['classroom_id', 'room_id']);
     const enrollmentDateIdx = findColumnIndex(headers, ['enrollment_date', 'enroll_date', 'join_date']);
     const enrollmentStatusIdx = findColumnIndex(headers, ['enrollment_status', 'enroll_status', 'status']);
