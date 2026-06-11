@@ -161,10 +161,25 @@ Deno.serve(async (req) => {
     // Callers that need the real result (e.g. the admin "Test Sync" button) can pass
     // { wait: true } to keep the original synchronous behaviour.
     const pushAll = async () => {
+      console.log('[sync-to-sheet] pushAll start', {
+        date,
+        dataset: activeSlug,
+        total_students: totalStudents,
+        attendance_records: filteredAttData.length,
+        absentees_count: absentees.length,
+        present_count: presentCount,
+        actions: actions.map(a => a.action),
+        targets: allTargets.map(t => t.label),
+      });
       const targetResults = await Promise.all(
         allTargets.map(async (target) => {
           const perActionResults: { action: string; success: boolean; error?: string }[] = [];
           for (const payload of actions) {
+            const payloadSize =
+              (payload as any).records?.length ??
+              (payload as any).absentees?.length ??
+              (payload as any).students?.length ?? 0;
+            console.log(`[sync-to-sheet] -> ${target.label} :: ${payload.action} (items=${payloadSize})`);
             try {
               const controller = new AbortController();
               const timeout = setTimeout(() => controller.abort(), 60000);
@@ -181,6 +196,7 @@ Deno.serve(async (req) => {
               clearTimeout(timeout);
               const text = await res.text();
               const trimmed = text.trim();
+              console.log(`[sync-to-sheet] <- ${target.label} :: ${payload.action} status=${res.status} body=${trimmed.slice(0, 300)}`);
               const isHtml = trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html');
               if (!res.ok) {
                 const hint = isHtml && trimmed.includes('Page Not Found')
@@ -200,10 +216,12 @@ Deno.serve(async (req) => {
               }
             } catch (e: any) {
               const msg = e?.message ?? String(e);
+              console.error(`[sync-to-sheet] !! ${target.label} :: ${payload.action} threw`, msg);
               perActionResults.push({ action: payload.action, success: false, error: msg.includes('abort') ? 'Timeout (60s) — Apps Script took too long' : msg });
             }
           }
           const failures = perActionResults.filter(r => !r.success);
+          console.log(`[sync-to-sheet] target ${target.label} done — successes=${perActionResults.length - failures.length} failures=${failures.length}`, failures);
           return {
             label: target.label,
             success: failures.length === 0,
