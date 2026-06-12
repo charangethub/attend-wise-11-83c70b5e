@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare } from "lucide-react";
+import { Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { logActivity, logActivityBatch } from "@/hooks/useActivityLog";
@@ -16,8 +17,11 @@ import RemarkDialog from "@/components/RemarkDialog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 import { queueAttendanceSheetSync } from "@/lib/sheetSync";
+import CsvUploadDialog from "@/components/CsvUploadDialog";
+import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
-type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
+type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; user_id_vedantu?: string | null; };
 type AttendanceDraft = { attendance: Record<string, string>; remarks: Record<string, string> };
 
 const SESSION = "AM"; // Fixed single session
@@ -53,6 +57,9 @@ const AttendanceDashboard = () => {
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
+  const canUploadCsv = userRole === "owner" || userRole === "admin";
 
   const loadedDraftKeyRef = useRef<string | null>(null);
   const draftKeyForCleanupRef = useRef<string | null>(null);
@@ -72,7 +79,7 @@ const AttendanceDashboard = () => {
     if (!activeSlug || !draftStorageKey) return;
     if (!preserveUserChanges) setLoading(true);
 
-    const studentRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status");
+    const studentRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu");
     const attendanceRows = await fetchAttendanceForStudents<any>({
       columns: "student_id, status, remark, session",
       studentIds: studentRows.map((student) => student.id),
