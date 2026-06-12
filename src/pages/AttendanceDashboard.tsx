@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { logActivity, logActivityBatch } from "@/hooks/useActivityLog";
@@ -16,8 +16,11 @@ import RemarkDialog from "@/components/RemarkDialog";
 import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 import { queueAttendanceSheetSync } from "@/lib/sheetSync";
+import CsvUploadDialog from "@/components/CsvUploadDialog";
+import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
-type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; };
+type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; user_id_vedantu?: string | null; };
 type AttendanceDraft = { attendance: Record<string, string>; remarks: Record<string, string> };
 
 const SESSION = "AM"; // Fixed single session
@@ -53,6 +56,9 @@ const AttendanceDashboard = () => {
   const [viewMode, setViewMode] = useState<"card" | "table">(() => (localStorage.getItem("att-view") as any) || "table");
   const [remarkDialogStudent, setRemarkDialogStudent] = useState<Student | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [csvUploadOpen, setCsvUploadOpen] = useState(false);
+  const [csvUploading, setCsvUploading] = useState(false);
+  const canUploadCsv = userRole === "owner" || userRole === "admin";
 
   const loadedDraftKeyRef = useRef<string | null>(null);
   const draftKeyForCleanupRef = useRef<string | null>(null);
@@ -72,7 +78,7 @@ const AttendanceDashboard = () => {
     if (!activeSlug || !draftStorageKey) return;
     if (!preserveUserChanges) setLoading(true);
 
-    const studentRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status");
+    const studentRows = await fetchDatasetStudents<Student>(activeSlug, "id, roll_no, student_name, grade, curriculum, classroom_name, enrollment_status, user_id_vedantu");
     const attendanceRows = await fetchAttendanceForStudents<any>({
       columns: "student_id, status, remark, session",
       studentIds: studentRows.map((student) => student.id),
@@ -298,6 +304,82 @@ const AttendanceDashboard = () => {
     setSyncing(false);
   };
 
+  const downloadAttendanceTemplate = () => {
+    const header = ["user_id", "date", "status", "remark"].join(",");
+    const sample1 = ["VED-001", selectedDate, "P", ""].join(",");
+    const sample2 = ["VED-002", selectedDate, "A", "Sick"].join(",");
+    const csv = `${header}\n${sample1}\n${sample2}\n`;
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "mark_attendance_template.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleAttendanceCsvUpload = async (file: File) => {
+    if (!user) return;
+    setCsvUploading(true);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length < 2) { toast.error("CSV must have header + data rows"); setCsvUploading(false); return; }
+      const headers = rows[0].map((h) => normalizeHeader(h));
+      const dateIdx = headers.indexOf("date");
+      const statusIdx = headers.indexOf("status");
+      const remarkIdx = headers.indexOf("remark");
+      const hasIdent = headers.some(h => ["roll_no", "rollno", "user_id_vedantu", "user_id", "userid"].includes(h));
+      if (statusIdx === -1) { toast.error("CSV must have a 'status' column"); setCsvUploading(false); return; }
+      if (!hasIdent) { toast.error("CSV must include a 'user_id' column"); setCsvUploading(false); return; }
+
+      const lookup = buildStudentLookup(students as any);
+      const upserts: any[] = [];
+      const skipped: string[] = [];
+      const nextAttendance: Record<string, string> = { ...attendance };
+      const nextRemarks: Record<string, string> = { ...remarks };
+
+      for (let i = 1; i < rows.length; i++) {
+        const cols = rows[i].map((c) => (c ?? "").trim());
+        const matched = findStudentInRow(cols, headers, lookup);
+        if (!matched) { skipped.push(`Row ${i + 1}: no matching student`); continue; }
+        const date = dateIdx >= 0 ? cols[dateIdx] : selectedDate;
+        const status = (cols[statusIdx] || "").toUpperCase();
+        const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
+        if (!["P", "A"].includes(status)) { skipped.push(`Row ${i + 1}: invalid status "${status}" (use P or A)`); continue; }
+        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped.push(`Row ${i + 1}: invalid date "${date}"`); continue; }
+        upserts.push({ student_id: matched.id, date: date || selectedDate, session: SESSION, status, remark, marked_by: user.id });
+        if ((date || selectedDate) === selectedDate) {
+          nextAttendance[matched.id] = status;
+          nextRemarks[matched.id] = remark;
+        }
+      }
+
+      if (upserts.length === 0) {
+        toast.error(`No valid rows found. ${skipped.slice(0, 3).join(" • ")}`);
+        setCsvUploading(false); return;
+      }
+
+      for (let i = 0; i < upserts.length; i += 50) {
+        const { error } = await supabase.from("attendance").upsert(upserts.slice(i, i + 50) as any, { onConflict: "student_id,date,session" });
+        if (error) throw error;
+      }
+
+      setAttendance(nextAttendance);
+      setRemarks(nextRemarks);
+      setOriginalAttendance(nextAttendance);
+      setOriginalRemarks(nextRemarks);
+      toast.success(`Uploaded ${upserts.length} attendance records${skipped.length ? ` (${skipped.length} skipped)` : ""}`);
+      if (skipped.length) console.info("Skipped rows:", skipped);
+      setCsvUploadOpen(false);
+      await fetchAttendanceData(true);
+      Array.from(new Set(upserts.map((r) => r.date))).forEach((d) => {
+        void queueAttendanceSheetSync(d).catch((err) => console.warn("Sheet sync failed:", err));
+      });
+    } catch (err: any) {
+      toast.error("Upload failed: " + (err.message || "Unknown"));
+    }
+    setCsvUploading(false);
+  };
+
   const toggleStatus = (studentId: string, status: string) => {
     if (!canEdit) return;
     setAttendance((prev) => {
@@ -336,6 +418,11 @@ const AttendanceDashboard = () => {
           <Button variant="destructive" size="sm" onClick={() => { setAttendance({}); setRemarks({}); }} className="gap-1.5">
             <Trash2 className="h-4 w-4" /> Clear All
           </Button>
+          {canUploadCsv && (
+            <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
+              <Upload className="h-4 w-4" /> Upload CSV
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing} className="gap-1.5">
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync Sheet
           </Button>
@@ -573,6 +660,22 @@ const AttendanceDashboard = () => {
           onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
         />
       )}
+
+      <CsvUploadDialog
+        open={csvUploadOpen}
+        onOpenChange={setCsvUploadOpen}
+        title="Upload Attendance CSV"
+        description={`Bulk import attendance. Defaults to ${selectedDate} if no date column.`}
+        onDownloadTemplate={downloadAttendanceTemplate}
+        onUpload={handleAttendanceCsvUpload}
+        uploading={csvUploading}
+        helpText={
+          <>
+            <p><strong>Columns:</strong> user_id, date (YYYY-MM-DD, optional), status (P or A), remark (optional)</p>
+            <p>Students are matched by user_id (Vedantu ID). Records save immediately and refresh the page.</p>
+          </>
+        }
+      />
     </div>
   );
 };

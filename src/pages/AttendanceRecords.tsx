@@ -33,6 +33,7 @@ const AttendanceRecords = () => {
   const { datasetSlug: activeSlug } = usePageDataset("Attendance Records");
   const { userRole } = useAuth();
   const isOwner = userRole === "owner";
+  const canUploadCsv = userRole === "owner" || userRole === "admin";
   const [csvUploadOpen, setCsvUploadOpen] = useState(false);
   const [csvUploading, setCsvUploading] = useState(false);
 
@@ -41,9 +42,9 @@ const AttendanceRecords = () => {
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
   const downloadAttendanceTemplate = () => {
-    const header = ["user_id_vedantu", "roll_no", "date", "status", "remark"].join(",");
-    const sample1 = ["VED-001", "ROLL001", "2026-04-15", "P", ""].join(",");
-    const sample2 = ["", "ROLL002", "2026-04-15", "A", "Sick"].join(",");
+    const header = ["user_id", "date", "status", "remark"].join(",");
+    const sample1 = ["VED-001", "2026-04-15", "P", ""].join(",");
+    const sample2 = ["VED-002", "2026-04-15", "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -86,7 +87,7 @@ const AttendanceRecords = () => {
         const date = cols[dateIdx];
         const status = (cols[statusIdx] || "").toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
-        if (!["P", "A", "L", "H"].includes(status)) { skippedReasons.push(`Row ${i + 1}: invalid status "${status}"`); continue; }
+        if (!["P", "A"].includes(status)) { skippedReasons.push(`Row ${i + 1}: invalid status "${status}" (use P or A)`); continue; }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skippedReasons.push(`Row ${i + 1}: invalid date "${date}"`); continue; }
 
         upserts.push({
@@ -228,7 +229,7 @@ const AttendanceRecords = () => {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div><h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h1><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
         <div className="flex gap-2">
-          {isOwner && <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>}
+          {canUploadCsv && <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>}
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
         </div>
       </div>
@@ -314,8 +315,8 @@ const AttendanceRecords = () => {
         uploading={csvUploading}
         helpText={
           <>
-            <p><strong>Columns:</strong> user_id_vedantu (preferred) or roll_no, date (YYYY-MM-DD), status (P/A/L/H), remark (optional)</p>
-            <p>Students are matched by user_id_vedantu first, then roll_no. Invalid rows are skipped.</p>
+            <p><strong>Columns:</strong> user_id, date (YYYY-MM-DD), status (P or A), remark (optional)</p>
+            <p>Students are matched by user_id (Vedantu ID). Invalid rows are skipped.</p>
           </>
         }
       />
