@@ -660,6 +660,22 @@ const AttendanceDashboard = () => {
           onSave={(remark) => setRemarks((prev) => ({ ...prev, [remarkDialogStudent.id]: remark }))}
         />
       )}
+
+      <CsvUploadDialog
+        open={csvUploadOpen}
+        onOpenChange={setCsvUploadOpen}
+        title="Upload Attendance CSV"
+        description={`Bulk import attendance. Defaults to ${selectedDate} if no date column.`}
+        onDownloadTemplate={downloadAttendanceTemplate}
+        onUpload={handleAttendanceCsvUpload}
+        uploading={csvUploading}
+        helpText={
+          <>
+            <p><strong>Columns:</strong> user_id, date (YYYY-MM-DD, optional), status (P or A), remark (optional)</p>
+            <p>Students are matched by user_id (Vedantu ID). Records save immediately and refresh the page.</p>
+          </>
+        }
+      />
     </div>
   );
 };
