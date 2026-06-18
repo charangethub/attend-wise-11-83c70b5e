@@ -1,27 +1,39 @@
 /**
- * Build a lookup map keyed by BOTH roll_no and user_id_vedantu (uppercased, trimmed).
- * Either column can match; user_id_vedantu wins when both are present in the same row.
+ * Build a lookup map keyed by roll_no, user_id_vedantu, and unique student names.
+ * ID-based matches are preferred; name is only a fallback for CSVs exported with rounded IDs.
  */
-export type MatchableStudent = { id: string; roll_no?: string | null; user_id_vedantu?: string | null };
+export type MatchableStudent = { id: string; roll_no?: string | null; user_id_vedantu?: string | null; student_name?: string | null };
+
+const normalizeKey = (value: string | null | undefined) => (value || "").trim().toUpperCase();
+const normalizeNameKey = (value: string | null | undefined) => (value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export function buildStudentLookup<T extends MatchableStudent>(students: T[]): Map<string, T> {
   const map = new Map<string, T>();
-  // Populate roll_no first
+  const nameCounts = new Map<string, number>();
+
   students.forEach((s) => {
-    const r = (s.roll_no || "").trim().toUpperCase();
-    if (r) map.set(r, s);
+    const name = normalizeNameKey(s.student_name);
+    if (name) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
   });
-  // Then user_id_vedantu — overrides on collision
+
   students.forEach((s) => {
-    const u = (s.user_id_vedantu || "").trim().toUpperCase();
-    if (u) map.set(u, s);
+    const r = normalizeKey(s.roll_no);
+    if (r) map.set(`ROLL:${r}`, s);
+  });
+  students.forEach((s) => {
+    const u = normalizeKey(s.user_id_vedantu);
+    if (u) map.set(`USER:${u}`, s);
+  });
+  students.forEach((s) => {
+    const name = normalizeNameKey(s.student_name);
+    if (name && nameCounts.get(name) === 1) map.set(`NAME:${name}`, s);
   });
   return map;
 }
 
 /**
- * Given a CSV row's column values, attempt to match a student by either
- * the `user_id_vedantu` column (or `user_id`) or the `roll_no` column.
+ * Given a CSV row's column values, attempt to match a student by user ID,
+ * roll number, then unique student name as a safe fallback.
  */
 export function findStudentInRow<T extends MatchableStudent>(
   cols: string[],
@@ -31,14 +43,19 @@ export function findStudentInRow<T extends MatchableStudent>(
   const lower = headers.map((h) => h.toLowerCase().replace(/[\s-]+/g, "_"));
   const userIdx = lower.findIndex((h) => h === "user_id_vedantu" || h === "user_id" || h === "userid");
   const rollIdx = lower.findIndex((h) => h === "roll_no" || h === "rollno");
+  const nameIdx = lower.findIndex((h) => h === "name" || h === "student_name" || h === "student");
 
   if (userIdx >= 0) {
-    const v = (cols[userIdx] || "").trim().toUpperCase();
-    if (v && lookup.has(v)) return lookup.get(v);
+    const v = normalizeKey(cols[userIdx]);
+    if (v && lookup.has(`USER:${v}`)) return lookup.get(`USER:${v}`);
   }
   if (rollIdx >= 0) {
-    const v = (cols[rollIdx] || "").trim().toUpperCase();
-    if (v && lookup.has(v)) return lookup.get(v);
+    const v = normalizeKey(cols[rollIdx]);
+    if (v && lookup.has(`ROLL:${v}`)) return lookup.get(`ROLL:${v}`);
+  }
+  if (nameIdx >= 0) {
+    const v = normalizeNameKey(cols[nameIdx]);
+    if (v && lookup.has(`NAME:${v}`)) return lookup.get(`NAME:${v}`);
   }
   return undefined;
 }
