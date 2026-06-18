@@ -305,9 +305,9 @@ const AttendanceDashboard = () => {
   };
 
   const downloadAttendanceTemplate = () => {
-    const header = ["user_id", "date", "status", "remark"].join(",");
-    const sample1 = ["VED-001", selectedDate, "P", ""].join(",");
-    const sample2 = ["VED-002", selectedDate, "A", "Sick"].join(",");
+    const header = ["name", "User ID", "status", "Remarks"].join(",");
+    const sample1 = ["Student Name", "V_4100000000000000", "P", ""].join(",");
+    const sample2 = ["Student Name 2", "V_4100000000000001", "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -326,10 +326,11 @@ const AttendanceDashboard = () => {
       const headers = rows[0].map((h) => normalizeHeader(h));
       const dateIdx = headers.indexOf("date");
       const statusIdx = headers.indexOf("status");
-      const remarkIdx = headers.indexOf("remark");
+      const remarkIdx = headers.findIndex((h) => h === "remark" || h === "remarks" || h === "reason");
       const hasIdent = headers.some(h => ["roll_no", "rollno", "user_id_vedantu", "user_id", "userid"].includes(h));
+      const hasName = headers.some(h => ["name", "student_name", "student"].includes(h));
       if (statusIdx === -1) { toast.error("CSV must have a 'status' column"); setCsvUploading(false); return; }
-      if (!hasIdent) { toast.error("CSV must include a 'user_id' column"); setCsvUploading(false); return; }
+      if (!hasIdent && !hasName) { toast.error("CSV must include User ID or name column"); setCsvUploading(false); return; }
 
       const lookup = buildStudentLookup(students as any);
       const upserts: any[] = [];
@@ -671,8 +672,8 @@ const AttendanceDashboard = () => {
         uploading={csvUploading}
         helpText={
           <>
-            <p><strong>Columns:</strong> user_id, date (YYYY-MM-DD, optional), status (P or A), remark (optional)</p>
-            <p>Students are matched by user_id (Vedantu ID). Records save immediately and refresh the page.</p>
+            <p><strong>Columns:</strong> name, User ID, status (P or A), Remarks</p>
+            <p>User ID is matched first; name is used only as a fallback. Records save immediately and refresh the page.</p>
           </>
         }
       />
