@@ -311,14 +311,14 @@ const AttendanceRecords = () => {
         open={csvUploadOpen}
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
-        description="Upload a CSV to bulk import attendance records."
+        description="Upload a CSV to bulk import attendance records. If date is missing, today's date is used."
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}
         helpText={
           <>
-            <p><strong>Columns:</strong> user_id, date (YYYY-MM-DD), status (P or A), remark (optional)</p>
-            <p>Students are matched by user_id (Vedantu ID). Invalid rows are skipped.</p>
+            <p><strong>Columns:</strong> name, User ID, status (P or A), Remarks</p>
+            <p>User ID is matched first; name is used only as a fallback. Invalid rows are skipped.</p>
           </>
         }
       />
