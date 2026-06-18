@@ -42,9 +42,9 @@ const AttendanceRecords = () => {
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
   const downloadAttendanceTemplate = () => {
-    const header = ["user_id", "date", "status", "remark"].join(",");
-    const sample1 = ["VED-001", "2026-04-15", "P", ""].join(",");
-    const sample2 = ["VED-002", "2026-04-15", "A", "Sick"].join(",");
+    const header = ["name", "User ID", "status", "Remarks"].join(",");
+    const sample1 = ["Student Name", "V_4100000000000000", "P", ""].join(",");
+    const sample2 = ["Student Name 2", "V_4100000000000001", "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -63,15 +63,17 @@ const AttendanceRecords = () => {
       const headers = rows[0].map((h) => normalizeHeader(h));
       const dateIdx = headers.indexOf("date");
       const statusIdx = headers.indexOf("status");
-      const remarkIdx = headers.indexOf("remark");
+      const remarkIdx = headers.findIndex((h) => h === "remark" || h === "remarks" || h === "reason");
       const hasIdent = headers.some(h => ["roll_no", "rollno", "user_id_vedantu", "user_id", "userid"].includes(h));
+      const hasName = headers.some(h => ["name", "student_name", "student"].includes(h));
+      const fallbackDate = format(new Date(), "yyyy-MM-dd");
 
-      if (dateIdx === -1 || statusIdx === -1) {
-        toast.error("CSV must have date and status columns");
+      if (statusIdx === -1) {
+        toast.error("CSV must have a status column");
         setCsvUploading(false); return;
       }
-      if (!hasIdent) {
-        toast.error("CSV must include either roll_no or user_id_vedantu");
+      if (!hasIdent && !hasName) {
+        toast.error("CSV must include User ID or name column");
         setCsvUploading(false); return;
       }
 
@@ -84,7 +86,7 @@ const AttendanceRecords = () => {
         const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
         if (!matched) { skippedReasons.push(`Row ${i + 1}: no matching student`); continue; }
-        const date = cols[dateIdx];
+        const date = dateIdx >= 0 ? cols[dateIdx] : fallbackDate;
         const status = (cols[statusIdx] || "").toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
         if (!["P", "A"].includes(status)) { skippedReasons.push(`Row ${i + 1}: invalid status "${status}" (use P or A)`); continue; }
