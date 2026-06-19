@@ -59,3 +59,25 @@ export function findStudentInRow<T extends MatchableStudent>(
   }
   return undefined;
 }
+
+/**
+ * Parse a CSV date cell into ISO YYYY-MM-DD. Accepts:
+ *  - YYYY-MM-DD
+ *  - DD-MM-YYYY or DD/MM/YYYY (and single-digit day/month variants)
+ * Returns null when the value is empty or unparseable.
+ */
+export function parseCsvDate(value: string | null | undefined): string | null {
+  const v = (value || "").trim();
+  if (!v) return null;
+  const iso = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) {
+    const [, y, m, d] = iso;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  const dmy = v.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}

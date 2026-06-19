@@ -13,7 +13,7 @@ import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents, getSessionRemarkTooltip } from "@/lib/attendanceData";
 import { toast } from "sonner";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
-import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { buildStudentLookup, findStudentInRow, parseCsvDate } from "@/lib/csvMatch";
 import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 
@@ -86,11 +86,12 @@ const AttendanceRecords = () => {
         const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
         if (!matched) { skippedReasons.push(`Row ${i + 1}: no matching student`); continue; }
-        const date = dateIdx >= 0 ? cols[dateIdx] : fallbackDate;
+        const rawDate = dateIdx >= 0 ? cols[dateIdx] : "";
+        const date = rawDate ? parseCsvDate(rawDate) : fallbackDate;
         const status = (cols[statusIdx] || "").toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
         if (!["P", "A"].includes(status)) { skippedReasons.push(`Row ${i + 1}: invalid status "${status}" (use P or A)`); continue; }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { skippedReasons.push(`Row ${i + 1}: invalid date "${date}"`); continue; }
+        if (!date) { skippedReasons.push(`Row ${i + 1}: invalid date "${rawDate}" (use DD-MM-YYYY or YYYY-MM-DD)`); continue; }
 
         upserts.push({
           student_id: matched.id,
@@ -311,7 +312,7 @@ const AttendanceRecords = () => {
         open={csvUploadOpen}
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
-        description="Upload a CSV to bulk import attendance records. If date is missing, today's date is used."
+        description="Upload a CSV to bulk import attendance records. Date accepts DD-MM-YYYY or YYYY-MM-DD; if missing, today's date is used."
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}
