@@ -42,9 +42,10 @@ const AttendanceRecords = () => {
   const monthEnd = `${year}-${String(month + 1).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
 
   const downloadAttendanceTemplate = () => {
-    const header = ["name", "User ID", "status", "Remarks"].join(",");
-    const sample1 = ["Student Name", "V_4100000000000000", "P", ""].join(",");
-    const sample2 = ["Student Name 2", "V_4100000000000001", "A", "Sick"].join(",");
+    const sampleDate = format(new Date(), "dd-MM-yyyy");
+    const header = ["User ID", "Date", "Status", "Remarks"].join(",");
+    const sample1 = ["V_4100000000000000", sampleDate, "P", ""].join(",");
+    const sample2 = ["V_4100000000000001", sampleDate, "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -232,7 +233,12 @@ const AttendanceRecords = () => {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div><h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h1><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
         <div className="flex gap-2">
-          {canUploadCsv && <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>}
+          {canUploadCsv && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>
+              <Button variant="outline" size="sm" onClick={downloadAttendanceTemplate} className="gap-1.5"><Download className="h-4 w-4" /> Download Template</Button>
+            </>
+          )}
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
         </div>
       </div>
@@ -318,8 +324,8 @@ const AttendanceRecords = () => {
         uploading={csvUploading}
         helpText={
           <>
-            <p><strong>Columns:</strong> name, User ID, status (P or A), Remarks</p>
-            <p>User ID is matched first; name is used only as a fallback. Invalid rows are skipped.</p>
+            <p><strong>Columns:</strong> User ID, Date (DD-MM-YYYY), Status (P or A), Remarks</p>
+            <p>User ID is matched first; invalid rows are skipped.</p>
           </>
         }
       />
