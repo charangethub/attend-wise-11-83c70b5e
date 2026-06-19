@@ -312,7 +312,7 @@ const AttendanceRecords = () => {
         open={csvUploadOpen}
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
-        description="Upload a CSV to bulk import attendance records. If date is missing, today's date is used."
+        description="Upload a CSV to bulk import attendance records. Date accepts DD-MM-YYYY or YYYY-MM-DD; if missing, today's date is used."
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}
