@@ -667,7 +667,7 @@ const AttendanceDashboard = () => {
         open={csvUploadOpen}
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
-        description={`Bulk import attendance. Defaults to ${selectedDate} if no date column.`}
+        description={`Bulk import attendance. Date accepts DD-MM-YYYY or YYYY-MM-DD; defaults to ${selectedDate} if blank.`}
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}
