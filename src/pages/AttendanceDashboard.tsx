@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare, Upload } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare, Upload, Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { logActivity, logActivityBatch } from "@/hooks/useActivityLog";
@@ -305,9 +305,10 @@ const AttendanceDashboard = () => {
   };
 
   const downloadAttendanceTemplate = () => {
-    const header = ["name", "User ID", "status", "Remarks"].join(",");
-    const sample1 = ["Student Name", "V_4100000000000000", "P", ""].join(",");
-    const sample2 = ["Student Name 2", "V_4100000000000001", "A", "Sick"].join(",");
+    const sampleDate = format(new Date(), "dd-MM-yyyy");
+    const header = ["User ID", "Date", "Status", "Remarks"].join(",");
+    const sample1 = ["V_4100000000000000", sampleDate, "P", ""].join(",");
+    const sample2 = ["V_4100000000000001", sampleDate, "A", "Sick"].join(",");
     const csv = `${header}\n${sample1}\n${sample2}\n`;
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -421,9 +422,14 @@ const AttendanceDashboard = () => {
             <Trash2 className="h-4 w-4" /> Clear All
           </Button>
           {canUploadCsv && (
-            <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
-              <Upload className="h-4 w-4" /> Upload CSV
-            </Button>
+            <>
+              <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
+                <Upload className="h-4 w-4" /> Upload CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={downloadAttendanceTemplate} className="gap-1.5">
+                <Download className="h-4 w-4" /> Download Template
+              </Button>
+            </>
           )}
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing} className="gap-1.5">
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync Sheet
@@ -673,8 +679,8 @@ const AttendanceDashboard = () => {
         uploading={csvUploading}
         helpText={
           <>
-            <p><strong>Columns:</strong> name, User ID, status (P or A), Remarks</p>
-            <p>User ID is matched first; name is used only as a fallback. Records save immediately and refresh the page.</p>
+            <p><strong>Columns:</strong> User ID, Date (DD-MM-YYYY), Status (P or A), Remarks</p>
+            <p>User ID is matched first; invalid rows are skipped. Records save immediately and refresh the page.</p>
           </>
         }
       />
