@@ -10,10 +10,16 @@ const normalizeNameKey = (value: string | null | undefined) => (value || "").tri
 export function buildStudentLookup<T extends MatchableStudent>(students: T[]): Map<string, T> {
   const map = new Map<string, T>();
   const nameCounts = new Map<string, number>();
+  const idPrefixCounts = new Map<string, number>();
 
   students.forEach((s) => {
     const name = normalizeNameKey(s.student_name);
     if (name) nameCounts.set(name, (nameCounts.get(name) || 0) + 1);
+    const u = normalizeKey(s.user_id_vedantu);
+    if (u && u.length >= 6) {
+      const pfx = u.slice(0, -1);
+      idPrefixCounts.set(pfx, (idPrefixCounts.get(pfx) || 0) + 1);
+    }
   });
 
   students.forEach((s) => {
@@ -23,6 +29,10 @@ export function buildStudentLookup<T extends MatchableStudent>(students: T[]): M
   students.forEach((s) => {
     const u = normalizeKey(s.user_id_vedantu);
     if (u) map.set(`USER:${u}`, s);
+    if (u && u.length >= 6) {
+      const pfx = u.slice(0, -1);
+      if (idPrefixCounts.get(pfx) === 1) map.set(`USERPFX:${pfx}`, s);
+    }
   });
   students.forEach((s) => {
     const name = normalizeNameKey(s.student_name);
@@ -48,6 +58,11 @@ export function findStudentInRow<T extends MatchableStudent>(
   if (userIdx >= 0) {
     const v = normalizeKey(cols[userIdx]);
     if (v && lookup.has(`USER:${v}`)) return lookup.get(`USER:${v}`);
+    // Excel often rounds the last digit of long numeric IDs — try prefix match.
+    if (v && v.length >= 6) {
+      const pfx = v.slice(0, -1);
+      if (lookup.has(`USERPFX:${pfx}`)) return lookup.get(`USERPFX:${pfx}`);
+    }
   }
   if (rollIdx >= 0) {
     const v = normalizeKey(cols[rollIdx]);
