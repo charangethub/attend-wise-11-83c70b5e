@@ -17,7 +17,7 @@ import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 import { fetchAttendanceForStudents, fetchDatasetStudents } from "@/lib/attendanceData";
 import { queueAttendanceSheetSync } from "@/lib/sheetSync";
 import CsvUploadDialog from "@/components/CsvUploadDialog";
-import { buildStudentLookup, findStudentInRow } from "@/lib/csvMatch";
+import { buildStudentLookup, findStudentInRow, parseCsvDate } from "@/lib/csvMatch";
 import { parseCsv, normalizeHeader } from "@/lib/csvParse";
 
 type Student = { id: string; roll_no: string; student_name: string; grade: string; curriculum: string; classroom_name: string; enrollment_status: string; user_id_vedantu?: string | null; };
@@ -342,13 +342,14 @@ const AttendanceDashboard = () => {
         const cols = rows[i].map((c) => (c ?? "").trim());
         const matched = findStudentInRow(cols, headers, lookup);
         if (!matched) { skipped.push(`Row ${i + 1}: no matching student`); continue; }
-        const date = dateIdx >= 0 ? cols[dateIdx] : selectedDate;
+        const rawDate = dateIdx >= 0 ? cols[dateIdx] : "";
+        const date = rawDate ? parseCsvDate(rawDate) : selectedDate;
         const status = (cols[statusIdx] || "").toUpperCase();
         const remark = remarkIdx >= 0 ? cols[remarkIdx] || "" : "";
         if (!["P", "A"].includes(status)) { skipped.push(`Row ${i + 1}: invalid status "${status}" (use P or A)`); continue; }
-        if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { skipped.push(`Row ${i + 1}: invalid date "${date}"`); continue; }
-        upserts.push({ student_id: matched.id, date: date || selectedDate, session: SESSION, status, remark, marked_by: user.id });
-        if ((date || selectedDate) === selectedDate) {
+        if (!date) { skipped.push(`Row ${i + 1}: invalid date "${rawDate}" (use DD-MM-YYYY or YYYY-MM-DD)`); continue; }
+        upserts.push({ student_id: matched.id, date, session: SESSION, status, remark, marked_by: user.id });
+        if (date === selectedDate) {
           nextAttendance[matched.id] = status;
           nextRemarks[matched.id] = remark;
         }
