@@ -266,7 +266,12 @@ export default function ResultsDashboard() {
                 <div className="text-xs text-muted-foreground uppercase">Total Students</div>
                 <Users className="h-4 w-4 text-muted-foreground" />
               </div>
-              <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>{students.length}</div>
+              <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>
+                {filteredStudents.length}
+                {filteredStudents.length !== students.length && (
+                  <span className="text-sm font-normal text-muted-foreground"> / {students.length}</span>
+                )}
+              </div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
               <div className="flex items-center justify-between">
