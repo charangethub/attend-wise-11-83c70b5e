@@ -234,6 +234,9 @@ export default function ResultsDashboard() {
             {data?.fetchedAt ? `Last updated ${format(new Date(data.fetchedAt), "dd MMM yyyy, hh:mm a")}` : ""}
             {data?.gidUsed ? ` · GID ${data.gidUsed}` : ""}
           </p>
+          <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+            <Info className="h-3 w-3" /> Results are filtered by Classroom and Curriculum (JEE / NEET). Use the filters below to scope the view.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={exportCsv} disabled={!students.length} className="gap-1.5">
@@ -361,6 +364,7 @@ export default function ResultsDashboard() {
                   <th className="px-2 py-2 text-left">Roll No</th>
                   <th className="px-2 py-2 text-left">Student Name</th>
                   <th className="px-2 py-2 text-left">Curriculum</th>
+                  <th className="px-2 py-2 text-left">Stream</th>
                   <th className="px-2 py-2 text-left">Grade</th>
                   <th className="px-2 py-2 text-left">Classroom</th>
                   <th className="px-2 py-2 text-center">Score</th>
@@ -390,11 +394,18 @@ export default function ResultsDashboard() {
                         </button>
                       </td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Curriculium", "Curriculum")}</td>
+                      <td className="px-2 py-1.5">
+                        {curr && (
+                          <Badge style={{ backgroundColor: curr.toUpperCase().includes('NEET') ? 'hsl(148, 63%, 30%)' : 'hsl(217, 91%, 50%)', color: 'white' }}>
+                            {curr.toUpperCase().includes('NEET') ? 'NEET' : 'JEE'}
+                          </Badge>
+                        )}
+                      </td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Grade")}</td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Classroom Name", "Classroom")}</td>
-                      <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) ? score : '-'}</td>
-                      <td className="px-2 py-1.5 text-center">{isFinite(max) ? max : '-'}</td>
-                      <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) ? `${pct.toFixed(1)}%` : '-'}</td>
+                      <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) && score > 0 ? score : <span className="text-muted-foreground text-[10px]">No score</span>}</td>
+                      <td className="px-2 py-1.5 text-center">{isFinite(max) && max > 0 ? max : '—'}</td>
+                      <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) && score > 0 ? `${pct.toFixed(1)}%` : '—'}</td>
                       <td className="px-2 py-1.5 text-center">
                         {isFinite(score) && score > 0 ? <Badge variant="outline" className={badge.cls}>{badge.label}</Badge> : <span className="text-muted-foreground">—</span>}
                       </td>
@@ -402,7 +413,7 @@ export default function ResultsDashboard() {
                   );
                 })}
                 {filteredStudents.length === 0 && (
-                  <tr><td colSpan={11} className="text-center py-8 text-muted-foreground">No students match filters.</td></tr>
+                  <tr><td colSpan={12} className="text-center py-8 text-muted-foreground">No students match filters.</td></tr>
                 )}
               </tbody>
             </table>
