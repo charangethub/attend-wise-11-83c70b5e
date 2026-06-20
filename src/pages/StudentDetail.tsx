@@ -196,8 +196,15 @@ export default function StudentDetail() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
           <div><div className="text-xs text-muted-foreground">User ID</div><div className="font-mono">{get("User ID")}</div></div>
           <div><div className="text-xs text-muted-foreground">Roll No</div><div>{get("Roll No")}</div></div>
-          <div><div className="text-xs text-muted-foreground">Classroom</div><div>{get("Classroom Name")}</div></div>
-          <div><div className="text-xs text-muted-foreground">Curriculum</div><div>{curriculum}</div></div>
+          <div><div className="text-xs text-muted-foreground">Classroom</div><div className="font-medium">{studentClassroom || '—'}</div></div>
+          <div><div className="text-xs text-muted-foreground">Curriculum</div><div className="flex items-center gap-2">
+            {curriculum || '—'}
+            {curriculum && (
+              <Badge style={{ backgroundColor: curriculum.toUpperCase().includes('NEET') ? 'hsl(148, 63%, 30%)' : 'hsl(217, 91%, 50%)', color: 'white' }}>
+                {curriculum.toUpperCase().includes('NEET') ? 'NEET' : 'JEE'}
+              </Badge>
+            )}
+          </div></div>
           <div><div className="text-xs text-muted-foreground">Grade</div><div>{get("Grade")}</div></div>
         </div>
       </CardContent></Card>
