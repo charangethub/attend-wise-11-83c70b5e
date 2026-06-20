@@ -10,6 +10,27 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, R
 
 const CHART_COLOR = "hsl(217, 91%, 50%)";
 
+// Curriculum-specific subject sets. We match sub-headers case-insensitively and
+// also allow common variants (Maths/Math/Mathematics, Bio/Biology, etc).
+const JEE_SUBJECTS = ["Physics", "Chemistry", "Maths", "Mathematics", "Math", "Maths A", "Maths B"];
+const NEET_SUBJECTS = ["Physics", "Chemistry", "Botany", "Zoology", "Biology", "Bio"];
+
+function normSub(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSubjectAllowed(sub: string, curriculum: string): boolean {
+  const list = curriculum.toUpperCase().includes("NEET") ? NEET_SUBJECTS : JEE_SUBJECTS;
+  const n = normSub(sub);
+  if (!n) return false;
+  // also drop meta columns
+  if (/^(total|max|percent|%|rank|grade|remarks?)$/i.test(sub.trim())) return false;
+  return list.some(x => {
+    const xn = normSub(x);
+    return n === xn || n.startsWith(xn) || xn.startsWith(n);
+  });
+}
+
 function getMaxFor(r: Record<string, string>, fallback = 0): number {
   const maxKey = Object.keys(r).find(k => k.toLowerCase() === 'max' || k.toLowerCase() === 'max total' || k.toLowerCase() === 'max marks');
   if (maxKey) { const v = parseFloat(r[maxKey]); if (isFinite(v) && v > 0) return v; }
@@ -41,6 +62,7 @@ export default function StudentDetail() {
   };
   const curriculum = get("Curriculium") || get("Curriculum");
   const defaultMax = curriculum.toUpperCase().includes('NEET') ? 720 : 300;
+  const studentClassroom = get("Classroom Name") || get("Classroom");
 
   const testRows = useMemo(() => {
     if (!student || !data) return [] as { test: string; subjects: Record<string, number>; total: number; max: number; pct: number }[];
@@ -51,13 +73,21 @@ export default function StudentDetail() {
       const subjects: Record<string, number> = {};
       for (const [k, v] of Object.entries(r)) {
         if (/^(total|max)/i.test(k)) continue;
+        if (!isSubjectAllowed(k, curriculum)) continue;
         const n = parseFloat(v);
         if (isFinite(n)) subjects[k] = n;
       }
       const pct = isFinite(total) && max > 0 ? (total / max) * 100 : 0;
       return { test, subjects, total: isFinite(total) ? total : 0, max, pct };
     });
-  }, [student, data, defaultMax]);
+  }, [student, data, defaultMax, curriculum]);
+
+  // Stable subject column list = union of curriculum subjects appearing in any test
+  const subjectColumns = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of testRows) for (const k of Object.keys(r.subjects)) seen.add(k);
+    return Array.from(seen);
+  }, [testRows]);
 
   const validRows = testRows.filter(r => r.total > 0 || Object.values(r.subjects).some(v => v > 0));
 
@@ -86,6 +116,37 @@ export default function StudentDetail() {
     return Array.from(sums.entries()).map(([sub, { total, n }]) => ({ subject: sub, average: +(total / Math.max(n, 1)).toFixed(2) }));
   }, [validRows]);
 
+  // Classroom ranking — compare against peers in the same classroom only
+  const classroomRank = useMemo(() => {
+    if (!data || !student || !studentClassroom) return null as null | { rank: number; total: number; avgPct: number; topName: string; topScore: number };
+    const peers = data.students.filter(s => {
+      const cls = s.info["Classroom Name"] ?? s.info["Classroom"] ?? Object.entries(s.info).find(([k]) => /classroom/i.test(k))?.[1] ?? "";
+      return cls === studentClassroom;
+    });
+    const scored = peers.map(s => {
+      let sumPct = 0, count = 0, best = 0;
+      for (const t of data.testNames) {
+        const r = s.results[t] ?? {};
+        const tot = getTotalFor(r);
+        const mx = getMaxFor(r, defaultMax) || defaultMax;
+        if (isFinite(tot) && tot > 0 && mx > 0) { sumPct += (tot / mx) * 100; count++; if (tot > best) best = tot; }
+      }
+      const name = (s.info["Student Name"] ?? s.info["Name"] ?? "") as string;
+      return { name, avg: count ? sumPct / count : 0, best };
+    }).filter(x => x.avg > 0);
+    if (!scored.length) return null;
+    scored.sort((a, b) => b.avg - a.avg);
+    const myName = get("Student Name") || get("Name");
+    const idx = scored.findIndex(x => x.name === myName);
+    return {
+      rank: idx >= 0 ? idx + 1 : scored.length,
+      total: scored.length,
+      avgPct: scored[idx >= 0 ? idx : 0].avg,
+      topName: scored[0].name,
+      topScore: scored[0].best,
+    };
+  }, [data, student, studentClassroom, defaultMax]);
+
   const improvements = useMemo(() => {
     if (validRows.length < 2) return null as null | { from: string; to: string; rows: { subject: string; delta: number }[] };
     const last = validRows[validRows.length - 1];
@@ -102,14 +163,18 @@ export default function StudentDetail() {
     if (subjectAverages.length) {
       const sorted = [...subjectAverages].sort((a, b) => b.average - a.average);
       out.push(`Strongest subject: ${sorted[0].subject} with average ${sorted[0].average} marks`);
-      if (sorted.length > 1) out.push(`Needs attention: ${sorted[sorted.length - 1].subject} with average ${sorted[sorted.length - 1].average} marks`);
+      if (sorted.length > 1) {
+        const weakest = sorted[sorted.length - 1];
+        out.push(`Most difficult subject: ${weakest.subject} (average ${weakest.average} marks) — focus revision here`);
+      }
     }
     if (validRows.length >= 2) {
       const delta = validRows[validRows.length - 1].total - validRows[0].total;
       if (delta !== 0) out.push(`${delta > 0 ? 'Improved' : 'Dropped'} by ${Math.abs(delta)} marks from ${validRows[0].test} to ${validRows[validRows.length - 1].test}`);
     }
+    if (classroomRank) out.push(`Class rank in ${studentClassroom}: ${classroomRank.rank} of ${classroomRank.total}`);
     return out;
-  }, [subjectAverages, validRows]);
+  }, [subjectAverages, validRows, classroomRank, studentClassroom]);
 
   if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>;
 
@@ -154,13 +219,18 @@ export default function StudentDetail() {
 
       {testRows.length > 0 && (
         <Card><CardContent className="p-4">
-          <h3 className="font-semibold mb-3">Test-wise Performance</h3>
+          <h3 className="font-semibold mb-3">
+            Test-wise Performance
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              ({curriculum.toUpperCase().includes('NEET') ? 'NEET' : 'JEE'} subjects only)
+            </span>
+          </h3>
           <div className="overflow-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-2 py-2 text-left">Test</th>
-                  {subjectAverages.map(s => <th key={s.subject} className="px-2 py-2 text-center">{s.subject}</th>)}
+                  {subjectColumns.map(s => <th key={s} className="px-2 py-2 text-center">{s}</th>)}
                   <th className="px-2 py-2 text-center">Total</th>
                   <th className="px-2 py-2 text-center">Max</th>
                   <th className="px-2 py-2 text-center">%</th>
@@ -170,7 +240,7 @@ export default function StudentDetail() {
                 {testRows.map(row => (
                   <tr key={row.test} className="border-t border-border">
                     <td className="px-2 py-2 font-semibold">{row.test}</td>
-                    {subjectAverages.map(s => <td key={s.subject} className="px-2 py-2 text-center">{row.subjects[s.subject] ?? '—'}</td>)}
+                    {subjectColumns.map(s => <td key={s} className="px-2 py-2 text-center">{row.subjects[s] ?? '—'}</td>)}
                     <td className="px-2 py-2 text-center font-bold">{row.total || '—'}</td>
                     <td className="px-2 py-2 text-center">{row.max || '—'}</td>
                     <td className="px-2 py-2 text-center">
@@ -180,6 +250,18 @@ export default function StudentDetail() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </CardContent></Card>
+      )}
+
+      {classroomRank && (
+        <Card><CardContent className="p-4">
+          <h3 className="font-semibold mb-3">Classroom Comparison — {studentClassroom}</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div><div className="text-xs text-muted-foreground uppercase">Class Rank</div><div className="text-2xl font-bold" style={{ color: CHART_COLOR }}>#{classroomRank.rank}<span className="text-sm font-normal text-muted-foreground"> / {classroomRank.total}</span></div></div>
+            <div><div className="text-xs text-muted-foreground uppercase">Your Avg %</div><div className="text-2xl font-bold">{classroomRank.avgPct.toFixed(1)}%</div></div>
+            <div><div className="text-xs text-muted-foreground uppercase">Class Topper</div><div className="text-sm font-bold truncate">{classroomRank.topName}</div></div>
+            <div><div className="text-xs text-muted-foreground uppercase">Topper Best</div><div className="text-2xl font-bold text-amber-600">{classroomRank.topScore}</div></div>
           </div>
         </CardContent></Card>
       )}
