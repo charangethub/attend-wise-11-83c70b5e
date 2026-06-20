@@ -104,7 +104,7 @@ export default function ResultsDashboard() {
   const categoryStats = useMemo(() => {
     if (!activeTest) return [] as { key: string; curr: string; grade: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[];
     const groups = new Map<string, { curr: string; grade: string; scores: { name: string; score: number; max: number; userId: string }[] }>();
-    for (const s of students) {
+    for (const s of filteredStudents) {
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       const grade = pickField(s.info, "Grade");
       const name = pickField(s.info, "Student Name", "Name");
@@ -141,13 +141,13 @@ export default function ResultsDashboard() {
       if (ja !== jb) return ja - jb;
       return a.grade.localeCompare(b.grade);
     });
-  }, [students, activeTest]);
+  }, [filteredStudents, activeTest]);
 
   // Overall topper across all students for active test
   const topPerformer = useMemo(() => {
     if (!activeTest) return null;
     let best: { name: string; score: number; userId: string } | null = null;
-    for (const s of students) {
+    for (const s of filteredStudents) {
       const r = s.results[activeTest] ?? {};
       const score = getTotalFor(r);
       if (!isFinite(score)) continue;
@@ -156,13 +156,13 @@ export default function ResultsDashboard() {
       if (!best || score > best.score) best = { name, score, userId };
     }
     return best;
-  }, [students, activeTest]);
+  }, [filteredStudents, activeTest]);
 
   // Class average (all students with valid score for activeTest)
   const classAverage = useMemo(() => {
     if (!activeTest) return { avg: 0, max: 0 };
     let sum = 0, sumMax = 0, n = 0;
-    for (const s of students) {
+    for (const s of filteredStudents) {
       const r = s.results[activeTest] ?? {};
       const score = getTotalFor(r);
       if (!isFinite(score)) continue;
@@ -172,7 +172,7 @@ export default function ResultsDashboard() {
       sum += score; sumMax += max; n++;
     }
     return { avg: n ? sum / n : 0, max: n ? sumMax / n : 0 };
-  }, [students, activeTest]);
+  }, [filteredStudents, activeTest]);
 
   const exportCsv = () => {
     const headers = ["#", "User ID", "Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment Status", "Score", "Max", "%", "Performance"];
