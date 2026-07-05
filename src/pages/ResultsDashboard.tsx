@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,18 @@ import { usePageDataset } from "@/hooks/usePageDataset";
 import { format } from "date-fns";
 
 const RESULTS_COLOR = "hsl(243, 75%, 55%)"; // indigo
+
+// sessionStorage-backed useState so filters persist across tab switches
+function usePersistentState<T>(key: string, initial: T): [T, (v: T) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw != null ? (JSON.parse(raw) as T) : initial;
+    } catch { return initial; }
+  });
+  useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+  return [val, setVal];
+}
 
 function pickField(info: Record<string, string>, ...keys: string[]): string {
   const lower = Object.fromEntries(Object.entries(info).map(([k, v]) => [k.toLowerCase().trim(), v]));
@@ -59,10 +71,10 @@ export default function ResultsDashboard() {
   const { datasetSlug } = usePageDataset("Results Dashboard");
   const { data, isLoading, isError, error, refetch, isFetching } = useResultsData(datasetSlug);
 
-  const [search, setSearch] = useState("");
-  const [classFilter, setClassFilter] = useState("all");
-  const [currFilter, setCurrFilter] = useState("all");
-  const [testFilter, setTestFilter] = useState<string>("__latest__");
+  const [search, setSearch] = usePersistentState<string>("results:search", "");
+  const [classFilter, setClassFilter] = usePersistentState<string>("results:class", "all");
+  const [currFilter, setCurrFilter] = usePersistentState<string>("results:curr", "all");
+  const [testFilter, setTestFilter] = usePersistentState<string>("results:test", "__latest__");
 
   const students = data?.students ?? [];
   const testNames = data?.testNames ?? [];
