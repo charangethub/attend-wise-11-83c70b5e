@@ -14,21 +14,44 @@ const CHART_COLOR = "hsl(217, 91%, 50%)";
 // also allow common variants (Maths/Math/Mathematics, Bio/Biology, etc).
 const JEE_SUBJECTS = ["Physics", "Chemistry", "Maths", "Mathematics", "Math", "Maths A", "Maths B"];
 const NEET_SUBJECTS = ["Physics", "Chemistry", "Botany", "Zoology", "Biology", "Bio"];
+// Substrings that indicate a subject cell relevant to each stream
+const NEET_SUBSTR = ["physics", "chemistry", "bio", "botany", "zoology"];
+const JEE_SUBSTR = ["physics", "chemistry", "math"];
 
 function normSub(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function isSubjectAllowed(sub: string, curriculum: string): boolean {
-  const list = curriculum.toUpperCase().includes("NEET") ? NEET_SUBJECTS : JEE_SUBJECTS;
+  const isNeet = curriculum.toUpperCase().includes("NEET");
+  const list = isNeet ? NEET_SUBJECTS : JEE_SUBJECTS;
+  const substrs = isNeet ? NEET_SUBSTR : JEE_SUBSTR;
   const n = normSub(sub);
   if (!n) return false;
   // also drop meta columns
   if (/^(total|max|percent|%|rank|grade|remarks?)$/i.test(sub.trim())) return false;
-  return list.some(x => {
-    const xn = normSub(x);
-    return n === xn || n.startsWith(xn) || xn.startsWith(n);
-  });
+  if (list.some(x => { const xn = normSub(x); return n === xn || n.startsWith(xn) || xn.startsWith(n); })) return true;
+  // Fallback: substring match so headers like "Maths/Bio" show for NEET students
+  return substrs.some(s => n.includes(s));
+}
+
+// Determine if a test name is relevant for the student's grade + curriculum
+function isTestRelevant(testName: string, grade: string, curriculum: string): boolean {
+  const t = testName.toLowerCase();
+  const isNeet = curriculum.toUpperCase().includes("NEET");
+  // Grade prefix filter: "11-..." for grade 11, "12-..." for grade 12
+  const gradeStr = String(grade).trim();
+  const prefixMatch = t.match(/^(\d{1,2})-/);
+  if (prefixMatch && gradeStr && prefixMatch[1] !== gradeStr) return false;
+  // Curriculum filter: NEET students should not see JEE-Adv / EAPCET (JEE-only) tests
+  if (isNeet) {
+    if (/jee[-_ ]?adv/.test(t)) return false;
+    if (/eapcet/.test(t)) return false;
+  } else {
+    // JEE students shouldn't see NEET-only tests
+    if (/neet/.test(t)) return false;
+  }
+  return true;
 }
 
 function getMaxFor(r: Record<string, string>, fallback = 0): number {
@@ -63,10 +86,13 @@ export default function StudentDetail() {
   const curriculum = get("Curriculium") || get("Curriculum");
   const defaultMax = curriculum.toUpperCase().includes('NEET') ? 720 : 300;
   const studentClassroom = get("Classroom Name") || get("Classroom");
+  const studentGrade = get("Grade");
 
   const testRows = useMemo(() => {
     if (!student || !data) return [] as { test: string; subjects: Record<string, number>; total: number; max: number; pct: number }[];
-    return data.testNames.map(test => {
+    return data.testNames
+      .filter(test => isTestRelevant(test, studentGrade, curriculum))
+      .map(test => {
       const r = student.results[test] ?? {};
       const total = getTotalFor(r);
       const max = getMaxFor(r, defaultMax) || defaultMax;
@@ -80,7 +106,7 @@ export default function StudentDetail() {
       const pct = isFinite(total) && max > 0 ? (total / max) * 100 : 0;
       return { test, subjects, total: isFinite(total) ? total : 0, max, pct };
     });
-  }, [student, data, defaultMax, curriculum]);
+  }, [student, data, defaultMax, curriculum, studentGrade]);
 
   // Stable subject column list = union of curriculum subjects appearing in any test
   const subjectColumns = useMemo(() => {
@@ -232,29 +258,32 @@ export default function StudentDetail() {
               ({curriculum.toUpperCase().includes('NEET') ? 'NEET' : 'JEE'} subjects only)
             </span>
           </h3>
-          <div className="overflow-auto">
+          <div className="overflow-auto rounded-lg border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="text-white" style={{ background: `linear-gradient(90deg, ${CHART_COLOR}, hsl(263 80% 55%))` }}>
                 <tr>
-                  <th className="px-2 py-2 text-left">Test</th>
-                  {subjectColumns.map(s => <th key={s} className="px-2 py-2 text-center">{s}</th>)}
-                  <th className="px-2 py-2 text-center">Total</th>
-                  <th className="px-2 py-2 text-center">Max</th>
-                  <th className="px-2 py-2 text-center">%</th>
+                  <th className="px-3 py-2 text-left">Test</th>
+                  {subjectColumns.map(s => <th key={s} className="px-3 py-2 text-center">{s}</th>)}
+                  <th className="px-3 py-2 text-center">Total</th>
+                  <th className="px-3 py-2 text-center">Max</th>
+                  <th className="px-3 py-2 text-center">%</th>
                 </tr>
               </thead>
               <tbody>
-                {testRows.map(row => (
-                  <tr key={row.test} className="border-t border-border">
-                    <td className="px-2 py-2 font-semibold">{row.test}</td>
-                    {subjectColumns.map(s => <td key={s} className="px-2 py-2 text-center">{row.subjects[s] ?? '—'}</td>)}
-                    <td className="px-2 py-2 text-center font-bold">{row.total || '—'}</td>
-                    <td className="px-2 py-2 text-center">{row.max || '—'}</td>
-                    <td className="px-2 py-2 text-center">
-                      {row.pct > 0 ? <Badge variant="outline" className={row.pct >= 75 ? 'bg-green-500/10 text-green-700' : row.pct >= 50 ? 'bg-yellow-500/10 text-yellow-700' : 'bg-red-500/10 text-red-700'}>{row.pct.toFixed(1)}%</Badge> : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {testRows.map((row, i) => {
+                  const rowTint = row.pct >= 75 ? 'bg-green-500/5' : row.pct >= 50 ? 'bg-yellow-500/5' : row.pct > 0 ? 'bg-red-500/5' : (i % 2 ? 'bg-muted/20' : '');
+                  return (
+                    <tr key={row.test} className={`border-t border-border/60 hover:bg-muted/40 transition-colors ${rowTint}`}>
+                      <td className="px-3 py-2 font-semibold">{row.test}</td>
+                      {subjectColumns.map(s => <td key={s} className="px-3 py-2 text-center">{row.subjects[s] ?? <span className="text-muted-foreground">—</span>}</td>)}
+                      <td className="px-3 py-2 text-center font-bold">{row.total || '—'}</td>
+                      <td className="px-3 py-2 text-center text-muted-foreground">{row.max || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {row.pct > 0 ? <Badge variant="outline" className={row.pct >= 75 ? 'bg-green-500/15 text-green-700 border-green-500/40' : row.pct >= 50 ? 'bg-yellow-500/15 text-yellow-800 border-yellow-500/40' : 'bg-red-500/15 text-red-700 border-red-500/40'}>{row.pct.toFixed(1)}%</Badge> : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

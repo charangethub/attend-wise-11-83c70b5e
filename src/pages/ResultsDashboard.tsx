@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,18 @@ import { usePageDataset } from "@/hooks/usePageDataset";
 import { format } from "date-fns";
 
 const RESULTS_COLOR = "hsl(243, 75%, 55%)"; // indigo
+
+// sessionStorage-backed useState so filters persist across tab switches
+function usePersistentState<T>(key: string, initial: T): [T, (v: T) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      const raw = sessionStorage.getItem(key);
+      return raw != null ? (JSON.parse(raw) as T) : initial;
+    } catch { return initial; }
+  });
+  useEffect(() => { try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+  return [val, setVal];
+}
 
 function pickField(info: Record<string, string>, ...keys: string[]): string {
   const lower = Object.fromEntries(Object.entries(info).map(([k, v]) => [k.toLowerCase().trim(), v]));
@@ -59,10 +71,10 @@ export default function ResultsDashboard() {
   const { datasetSlug } = usePageDataset("Results Dashboard");
   const { data, isLoading, isError, error, refetch, isFetching } = useResultsData(datasetSlug);
 
-  const [search, setSearch] = useState("");
-  const [classFilter, setClassFilter] = useState("all");
-  const [currFilter, setCurrFilter] = useState("all");
-  const [testFilter, setTestFilter] = useState<string>("__latest__");
+  const [search, setSearch] = usePersistentState<string>("results:search", "");
+  const [classFilter, setClassFilter] = usePersistentState<string>("results:class", "all");
+  const [currFilter, setCurrFilter] = usePersistentState<string>("results:curr", "all");
+  const [testFilter, setTestFilter] = usePersistentState<string>("results:test", "__latest__");
 
   const students = data?.students ?? [];
   const testNames = data?.testNames ?? [];
@@ -100,48 +112,59 @@ export default function ResultsDashboard() {
     });
   }, [students, search, classFilter, currFilter]);
 
-  // Category-wise performance: { JEE/NEET × Grade 11/12 }
+  // Category-wise performance: grouped by Classroom. Each card uses that classroom's
+  // OWN latest test (the last test in the sheet order that has at least 1 valid score
+  // for a student in that classroom), so toppers are current per class.
   const categoryStats = useMemo(() => {
-    if (!activeTest) return [] as { key: string; curr: string; grade: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[];
-    const groups = new Map<string, { curr: string; grade: string; scores: { name: string; score: number; max: number; userId: string }[] }>();
+    const groups = new Map<string, { classroom: string; curr: string; grade: string; students: typeof filteredStudents }>();
     for (const s of filteredStudents) {
+      const classroom = pickField(s.info, "Classroom Name", "Classroom");
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       const grade = pickField(s.info, "Grade");
-      const name = pickField(s.info, "Student Name", "Name");
-      const uid = pickField(s.info, "User ID", "user_id_vedantu");
-      if (!curr || !grade) continue;
-      const r = s.results[activeTest] ?? {};
-      const score = getTotalFor(r);
-      let max = getMaxFor(r);
-      if (max <= 0) {
-        // Default per curriculum: JEE 300, NEET 720
-        max = curr.toUpperCase().includes('NEET') ? 720 : 300;
-      }
-      if (!isFinite(score)) continue;
-      const key = `${curr}|${grade}`;
-      if (!groups.has(key)) groups.set(key, { curr, grade, scores: [] });
-      groups.get(key)!.scores.push({ name, score, max, userId: uid });
+      if (!classroom) continue;
+      if (!groups.has(classroom)) groups.set(classroom, { classroom, curr, grade, students: [] as any });
+      (groups.get(classroom)!.students as any).push(s);
     }
-    return Array.from(groups.entries()).map(([key, g]) => {
-      const totalScore = g.scores.reduce((a, b) => a + b.score, 0);
-      const totalMax = g.scores.reduce((a, b) => a + b.max, 0);
-      const topper = g.scores.length ? g.scores.reduce((a, b) => b.score > a.score ? b : a) : null;
-      return {
-        key,
-        curr: g.curr,
-        grade: g.grade,
-        avg: totalScore / Math.max(g.scores.length, 1),
-        max: totalMax / Math.max(g.scores.length, 1),
-        topper: topper ? { name: topper.name, score: topper.score, userId: topper.userId } : null,
-        count: g.scores.length,
-      };
-    }).sort((a, b) => {
+    const out: { key: string; classroom: string; curr: string; grade: string; test: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[] = [];
+    for (const [key, g] of groups) {
+      // find latest test with a score in this classroom
+      let latest = "";
+      for (let i = testNames.length - 1; i >= 0; i--) {
+        const t = testNames[i];
+        if ((g.students as any[]).some(s => getTotalFor(s.results[t] ?? {}) > 0)) { latest = t; break; }
+      }
+      if (!latest) continue;
+      const scores: { name: string; score: number; max: number; userId: string }[] = [];
+      for (const s of g.students as any[]) {
+        const r = s.results[latest] ?? {};
+        const score = getTotalFor(r);
+        if (!isFinite(score) || score <= 0) continue;
+        let max = getMaxFor(r);
+        if (max <= 0) max = g.curr.toUpperCase().includes('NEET') ? 720 : 300;
+        scores.push({
+          name: pickField(s.info, "Student Name", "Name"),
+          score, max,
+          userId: pickField(s.info, "User ID", "user_id_vedantu"),
+        });
+      }
+      if (!scores.length) continue;
+      const totalScore = scores.reduce((a, b) => a + b.score, 0);
+      const totalMax = scores.reduce((a, b) => a + b.max, 0);
+      const topper = scores.reduce((a, b) => b.score > a.score ? b : a);
+      out.push({
+        key, classroom: g.classroom, curr: g.curr, grade: g.grade, test: latest,
+        avg: totalScore / scores.length, max: totalMax / scores.length,
+        topper: { name: topper.name, score: topper.score, userId: topper.userId },
+        count: scores.length,
+      });
+    }
+    return out.sort((a, b) => {
       const ja = a.curr.toUpperCase().includes('JEE') ? 0 : 1;
       const jb = b.curr.toUpperCase().includes('JEE') ? 0 : 1;
       if (ja !== jb) return ja - jb;
-      return a.grade.localeCompare(b.grade);
+      return a.classroom.localeCompare(b.classroom);
     });
-  }, [filteredStudents, activeTest]);
+  }, [filteredStudents, testNames]);
 
   // Overall topper across all students for active test
   const topPerformer = useMemo(() => {
@@ -302,31 +325,43 @@ export default function ResultsDashboard() {
 
           {categoryStats.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-2">Category Performance — {activeTest}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                Classroom Toppers <span className="text-xs font-normal text-muted-foreground">(each classroom's latest test)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {categoryStats.map(c => {
                   const pct = c.max > 0 ? (c.avg / c.max) * 100 : 0;
                   const isJee = c.curr.toUpperCase().includes("JEE");
-                  const cardColor = isJee ? "hsl(217, 91%, 50%)" : "hsl(148, 63%, 30%)";
+                  const cardColor = isJee ? "hsl(217, 91%, 50%)" : "hsl(148, 63%, 40%)";
+                  const gradient = isJee
+                    ? "linear-gradient(135deg, hsl(217 91% 50% / 0.12), hsl(263 80% 60% / 0.08))"
+                    : "linear-gradient(135deg, hsl(148 63% 40% / 0.14), hsl(180 60% 45% / 0.08))";
                   return (
-                    <Card key={c.key}><CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-1">
-                        <Badge style={{ backgroundColor: cardColor, color: "white" }}>{c.curr} · Grade {c.grade}</Badge>
-                        <span className="text-xs text-muted-foreground">{c.count} students</span>
-                      </div>
-                      <div className="text-2xl font-bold" style={{ color: cardColor }}>
-                        {c.avg.toFixed(1)} / {c.max.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">({pct.toFixed(1)}%)</span>
-                      </div>
+                    <Card key={c.key} className="overflow-hidden border-2" style={{ borderColor: `${cardColor}33` }}>
+                      <CardContent className="p-4" style={{ background: gradient }}>
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                          <Badge style={{ backgroundColor: cardColor, color: "white" }} className="shrink-0">
+                            {isJee ? 'JEE' : 'NEET'} · G{c.grade}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">{c.count} students</span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-foreground/80 mb-1 truncate" title={c.classroom}>{c.classroom}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Latest: {c.test}</div>
+                        <div className="text-2xl font-bold mt-1" style={{ color: cardColor }}>
+                          {c.avg.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">/ {c.max.toFixed(0)} ({pct.toFixed(1)}%)</span>
+                        </div>
                       {c.topper && (
-                        <p className="text-xs mt-1 flex items-center gap-1">
+                        <p className="text-xs mt-2 flex items-center gap-1 pt-2 border-t border-border/40">
                           <Trophy className="h-3 w-3 text-amber-500" /> Topper:{' '}
                           <button className="font-semibold hover:underline" onClick={() => c.topper!.userId && navigate(`/results/student/${encodeURIComponent(c.topper!.userId)}`)}>
                             {c.topper.name}
                           </button>{' '}
-                          ({c.topper.score})
+                          <span className="font-bold" style={{ color: cardColor }}>({c.topper.score})</span>
                         </p>
                       )}
-                    </CardContent></Card>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
@@ -355,9 +390,9 @@ export default function ResultsDashboard() {
             </Select>
           </div>
 
-          <div className="rounded-lg border border-border overflow-auto">
+          <div className="rounded-xl border border-border overflow-auto shadow-sm">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
+              <thead className="sticky top-0 z-10 text-white" style={{ background: `linear-gradient(90deg, ${RESULTS_COLOR}, hsl(263 80% 55%))` }}>
                 <tr>
                   <th className="px-2 py-2 text-left">#</th>
                   <th className="px-2 py-2 text-left">User ID</th>
@@ -383,8 +418,12 @@ export default function ResultsDashboard() {
                   const pct = isFinite(score) && max > 0 ? (score / max) * 100 : 0;
                   const badge = performanceBadge(pct);
                   const userId = pickField(s.info, "User ID", "user_id_vedantu");
+                  const rowTint = pct >= 75 ? 'bg-green-500/5 hover:bg-green-500/10'
+                    : pct >= 50 ? 'bg-yellow-500/5 hover:bg-yellow-500/10'
+                    : pct > 0 ? 'bg-red-500/5 hover:bg-red-500/10'
+                    : (i % 2 ? 'bg-muted/20 hover:bg-muted/40' : 'hover:bg-muted/30');
                   return (
-                    <tr key={userId || i} className={i % 2 ? 'bg-muted/10' : ''}>
+                    <tr key={userId || i} className={`transition-colors border-t border-border/50 ${rowTint}`}>
                       <td className="px-2 py-1.5">{i + 1}</td>
                       <td className="px-2 py-1.5 font-mono">{userId}</td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Roll No", "Roll Number")}</td>
