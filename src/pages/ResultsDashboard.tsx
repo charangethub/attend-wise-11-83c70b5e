@@ -390,9 +390,9 @@ export default function ResultsDashboard() {
             </Select>
           </div>
 
-          <div className="rounded-lg border border-border overflow-auto">
+          <div className="rounded-xl border border-border overflow-auto shadow-sm">
             <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-muted/80 backdrop-blur z-10">
+              <thead className="sticky top-0 z-10 text-white" style={{ background: `linear-gradient(90deg, ${RESULTS_COLOR}, hsl(263 80% 55%))` }}>
                 <tr>
                   <th className="px-2 py-2 text-left">#</th>
                   <th className="px-2 py-2 text-left">User ID</th>
@@ -418,8 +418,12 @@ export default function ResultsDashboard() {
                   const pct = isFinite(score) && max > 0 ? (score / max) * 100 : 0;
                   const badge = performanceBadge(pct);
                   const userId = pickField(s.info, "User ID", "user_id_vedantu");
+                  const rowTint = pct >= 75 ? 'bg-green-500/5 hover:bg-green-500/10'
+                    : pct >= 50 ? 'bg-yellow-500/5 hover:bg-yellow-500/10'
+                    : pct > 0 ? 'bg-red-500/5 hover:bg-red-500/10'
+                    : (i % 2 ? 'bg-muted/20 hover:bg-muted/40' : 'hover:bg-muted/30');
                   return (
-                    <tr key={userId || i} className={i % 2 ? 'bg-muted/10' : ''}>
+                    <tr key={userId || i} className={`transition-colors border-t border-border/50 ${rowTint}`}>
                       <td className="px-2 py-1.5">{i + 1}</td>
                       <td className="px-2 py-1.5 font-mono">{userId}</td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Roll No", "Roll Number")}</td>
