@@ -258,29 +258,32 @@ export default function StudentDetail() {
               ({curriculum.toUpperCase().includes('NEET') ? 'NEET' : 'JEE'} subjects only)
             </span>
           </h3>
-          <div className="overflow-auto">
+          <div className="overflow-auto rounded-lg border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
+              <thead className="text-white" style={{ background: `linear-gradient(90deg, ${CHART_COLOR}, hsl(263 80% 55%))` }}>
                 <tr>
-                  <th className="px-2 py-2 text-left">Test</th>
-                  {subjectColumns.map(s => <th key={s} className="px-2 py-2 text-center">{s}</th>)}
-                  <th className="px-2 py-2 text-center">Total</th>
-                  <th className="px-2 py-2 text-center">Max</th>
-                  <th className="px-2 py-2 text-center">%</th>
+                  <th className="px-3 py-2 text-left">Test</th>
+                  {subjectColumns.map(s => <th key={s} className="px-3 py-2 text-center">{s}</th>)}
+                  <th className="px-3 py-2 text-center">Total</th>
+                  <th className="px-3 py-2 text-center">Max</th>
+                  <th className="px-3 py-2 text-center">%</th>
                 </tr>
               </thead>
               <tbody>
-                {testRows.map(row => (
-                  <tr key={row.test} className="border-t border-border">
-                    <td className="px-2 py-2 font-semibold">{row.test}</td>
-                    {subjectColumns.map(s => <td key={s} className="px-2 py-2 text-center">{row.subjects[s] ?? '—'}</td>)}
-                    <td className="px-2 py-2 text-center font-bold">{row.total || '—'}</td>
-                    <td className="px-2 py-2 text-center">{row.max || '—'}</td>
-                    <td className="px-2 py-2 text-center">
-                      {row.pct > 0 ? <Badge variant="outline" className={row.pct >= 75 ? 'bg-green-500/10 text-green-700' : row.pct >= 50 ? 'bg-yellow-500/10 text-yellow-700' : 'bg-red-500/10 text-red-700'}>{row.pct.toFixed(1)}%</Badge> : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {testRows.map((row, i) => {
+                  const rowTint = row.pct >= 75 ? 'bg-green-500/5' : row.pct >= 50 ? 'bg-yellow-500/5' : row.pct > 0 ? 'bg-red-500/5' : (i % 2 ? 'bg-muted/20' : '');
+                  return (
+                    <tr key={row.test} className={`border-t border-border/60 hover:bg-muted/40 transition-colors ${rowTint}`}>
+                      <td className="px-3 py-2 font-semibold">{row.test}</td>
+                      {subjectColumns.map(s => <td key={s} className="px-3 py-2 text-center">{row.subjects[s] ?? <span className="text-muted-foreground">—</span>}</td>)}
+                      <td className="px-3 py-2 text-center font-bold">{row.total || '—'}</td>
+                      <td className="px-3 py-2 text-center text-muted-foreground">{row.max || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {row.pct > 0 ? <Badge variant="outline" className={row.pct >= 75 ? 'bg-green-500/15 text-green-700 border-green-500/40' : row.pct >= 50 ? 'bg-yellow-500/15 text-yellow-800 border-yellow-500/40' : 'bg-red-500/15 text-red-700 border-red-500/40'}>{row.pct.toFixed(1)}%</Badge> : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
