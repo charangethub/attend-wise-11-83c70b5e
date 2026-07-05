@@ -325,31 +325,43 @@ export default function ResultsDashboard() {
 
           {categoryStats.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold mb-2">Category Performance — {activeTest}</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                Classroom Toppers <span className="text-xs font-normal text-muted-foreground">(each classroom's latest test)</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {categoryStats.map(c => {
                   const pct = c.max > 0 ? (c.avg / c.max) * 100 : 0;
                   const isJee = c.curr.toUpperCase().includes("JEE");
-                  const cardColor = isJee ? "hsl(217, 91%, 50%)" : "hsl(148, 63%, 30%)";
+                  const cardColor = isJee ? "hsl(217, 91%, 50%)" : "hsl(148, 63%, 40%)";
+                  const gradient = isJee
+                    ? "linear-gradient(135deg, hsl(217 91% 50% / 0.12), hsl(263 80% 60% / 0.08))"
+                    : "linear-gradient(135deg, hsl(148 63% 40% / 0.14), hsl(180 60% 45% / 0.08))";
                   return (
-                    <Card key={c.key}><CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-1">
-                        <Badge style={{ backgroundColor: cardColor, color: "white" }}>{c.curr} · Grade {c.grade}</Badge>
-                        <span className="text-xs text-muted-foreground">{c.count} students</span>
-                      </div>
-                      <div className="text-2xl font-bold" style={{ color: cardColor }}>
-                        {c.avg.toFixed(1)} / {c.max.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">({pct.toFixed(1)}%)</span>
-                      </div>
+                    <Card key={c.key} className="overflow-hidden border-2" style={{ borderColor: `${cardColor}33` }}>
+                      <CardContent className="p-4" style={{ background: gradient }}>
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                          <Badge style={{ backgroundColor: cardColor, color: "white" }} className="shrink-0">
+                            {isJee ? 'JEE' : 'NEET'} · G{c.grade}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground">{c.count} students</span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-foreground/80 mb-1 truncate" title={c.classroom}>{c.classroom}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Latest: {c.test}</div>
+                        <div className="text-2xl font-bold mt-1" style={{ color: cardColor }}>
+                          {c.avg.toFixed(1)} <span className="text-xs font-normal text-muted-foreground">/ {c.max.toFixed(0)} ({pct.toFixed(1)}%)</span>
+                        </div>
                       {c.topper && (
-                        <p className="text-xs mt-1 flex items-center gap-1">
+                        <p className="text-xs mt-2 flex items-center gap-1 pt-2 border-t border-border/40">
                           <Trophy className="h-3 w-3 text-amber-500" /> Topper:{' '}
                           <button className="font-semibold hover:underline" onClick={() => c.topper!.userId && navigate(`/results/student/${encodeURIComponent(c.topper!.userId)}`)}>
                             {c.topper.name}
                           </button>{' '}
-                          ({c.topper.score})
+                          <span className="font-bold" style={{ color: cardColor }}>({c.topper.score})</span>
                         </p>
                       )}
-                    </CardContent></Card>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
