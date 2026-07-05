@@ -112,48 +112,59 @@ export default function ResultsDashboard() {
     });
   }, [students, search, classFilter, currFilter]);
 
-  // Category-wise performance: { JEE/NEET × Grade 11/12 }
+  // Category-wise performance: grouped by Classroom. Each card uses that classroom's
+  // OWN latest test (the last test in the sheet order that has at least 1 valid score
+  // for a student in that classroom), so toppers are current per class.
   const categoryStats = useMemo(() => {
-    if (!activeTest) return [] as { key: string; curr: string; grade: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[];
-    const groups = new Map<string, { curr: string; grade: string; scores: { name: string; score: number; max: number; userId: string }[] }>();
+    const groups = new Map<string, { classroom: string; curr: string; grade: string; students: typeof filteredStudents }>();
     for (const s of filteredStudents) {
+      const classroom = pickField(s.info, "Classroom Name", "Classroom");
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       const grade = pickField(s.info, "Grade");
-      const name = pickField(s.info, "Student Name", "Name");
-      const uid = pickField(s.info, "User ID", "user_id_vedantu");
-      if (!curr || !grade) continue;
-      const r = s.results[activeTest] ?? {};
-      const score = getTotalFor(r);
-      let max = getMaxFor(r);
-      if (max <= 0) {
-        // Default per curriculum: JEE 300, NEET 720
-        max = curr.toUpperCase().includes('NEET') ? 720 : 300;
-      }
-      if (!isFinite(score)) continue;
-      const key = `${curr}|${grade}`;
-      if (!groups.has(key)) groups.set(key, { curr, grade, scores: [] });
-      groups.get(key)!.scores.push({ name, score, max, userId: uid });
+      if (!classroom) continue;
+      if (!groups.has(classroom)) groups.set(classroom, { classroom, curr, grade, students: [] as any });
+      (groups.get(classroom)!.students as any).push(s);
     }
-    return Array.from(groups.entries()).map(([key, g]) => {
-      const totalScore = g.scores.reduce((a, b) => a + b.score, 0);
-      const totalMax = g.scores.reduce((a, b) => a + b.max, 0);
-      const topper = g.scores.length ? g.scores.reduce((a, b) => b.score > a.score ? b : a) : null;
-      return {
-        key,
-        curr: g.curr,
-        grade: g.grade,
-        avg: totalScore / Math.max(g.scores.length, 1),
-        max: totalMax / Math.max(g.scores.length, 1),
-        topper: topper ? { name: topper.name, score: topper.score, userId: topper.userId } : null,
-        count: g.scores.length,
-      };
-    }).sort((a, b) => {
+    const out: { key: string; classroom: string; curr: string; grade: string; test: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[] = [];
+    for (const [key, g] of groups) {
+      // find latest test with a score in this classroom
+      let latest = "";
+      for (let i = testNames.length - 1; i >= 0; i--) {
+        const t = testNames[i];
+        if ((g.students as any[]).some(s => getTotalFor(s.results[t] ?? {}) > 0)) { latest = t; break; }
+      }
+      if (!latest) continue;
+      const scores: { name: string; score: number; max: number; userId: string }[] = [];
+      for (const s of g.students as any[]) {
+        const r = s.results[latest] ?? {};
+        const score = getTotalFor(r);
+        if (!isFinite(score) || score <= 0) continue;
+        let max = getMaxFor(r);
+        if (max <= 0) max = g.curr.toUpperCase().includes('NEET') ? 720 : 300;
+        scores.push({
+          name: pickField(s.info, "Student Name", "Name"),
+          score, max,
+          userId: pickField(s.info, "User ID", "user_id_vedantu"),
+        });
+      }
+      if (!scores.length) continue;
+      const totalScore = scores.reduce((a, b) => a + b.score, 0);
+      const totalMax = scores.reduce((a, b) => a + b.max, 0);
+      const topper = scores.reduce((a, b) => b.score > a.score ? b : a);
+      out.push({
+        key, classroom: g.classroom, curr: g.curr, grade: g.grade, test: latest,
+        avg: totalScore / scores.length, max: totalMax / scores.length,
+        topper: { name: topper.name, score: topper.score, userId: topper.userId },
+        count: scores.length,
+      });
+    }
+    return out.sort((a, b) => {
       const ja = a.curr.toUpperCase().includes('JEE') ? 0 : 1;
       const jb = b.curr.toUpperCase().includes('JEE') ? 0 : 1;
       if (ja !== jb) return ja - jb;
-      return a.grade.localeCompare(b.grade);
+      return a.classroom.localeCompare(b.classroom);
     });
-  }, [filteredStudents, activeTest]);
+  }, [filteredStudents, testNames]);
 
   // Overall topper across all students for active test
   const topPerformer = useMemo(() => {
