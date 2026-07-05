@@ -14,21 +14,44 @@ const CHART_COLOR = "hsl(217, 91%, 50%)";
 // also allow common variants (Maths/Math/Mathematics, Bio/Biology, etc).
 const JEE_SUBJECTS = ["Physics", "Chemistry", "Maths", "Mathematics", "Math", "Maths A", "Maths B"];
 const NEET_SUBJECTS = ["Physics", "Chemistry", "Botany", "Zoology", "Biology", "Bio"];
+// Substrings that indicate a subject cell relevant to each stream
+const NEET_SUBSTR = ["physics", "chemistry", "bio", "botany", "zoology"];
+const JEE_SUBSTR = ["physics", "chemistry", "math"];
 
 function normSub(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function isSubjectAllowed(sub: string, curriculum: string): boolean {
-  const list = curriculum.toUpperCase().includes("NEET") ? NEET_SUBJECTS : JEE_SUBJECTS;
+  const isNeet = curriculum.toUpperCase().includes("NEET");
+  const list = isNeet ? NEET_SUBJECTS : JEE_SUBJECTS;
+  const substrs = isNeet ? NEET_SUBSTR : JEE_SUBSTR;
   const n = normSub(sub);
   if (!n) return false;
   // also drop meta columns
   if (/^(total|max|percent|%|rank|grade|remarks?)$/i.test(sub.trim())) return false;
-  return list.some(x => {
-    const xn = normSub(x);
-    return n === xn || n.startsWith(xn) || xn.startsWith(n);
-  });
+  if (list.some(x => { const xn = normSub(x); return n === xn || n.startsWith(xn) || xn.startsWith(n); })) return true;
+  // Fallback: substring match so headers like "Maths/Bio" show for NEET students
+  return substrs.some(s => n.includes(s));
+}
+
+// Determine if a test name is relevant for the student's grade + curriculum
+function isTestRelevant(testName: string, grade: string, curriculum: string): boolean {
+  const t = testName.toLowerCase();
+  const isNeet = curriculum.toUpperCase().includes("NEET");
+  // Grade prefix filter: "11-..." for grade 11, "12-..." for grade 12
+  const gradeStr = String(grade).trim();
+  const prefixMatch = t.match(/^(\d{1,2})-/);
+  if (prefixMatch && gradeStr && prefixMatch[1] !== gradeStr) return false;
+  // Curriculum filter: NEET students should not see JEE-Adv / EAPCET (JEE-only) tests
+  if (isNeet) {
+    if (/jee[-_ ]?adv/.test(t)) return false;
+    if (/eapcet/.test(t)) return false;
+  } else {
+    // JEE students shouldn't see NEET-only tests
+    if (/neet/.test(t)) return false;
+  }
+  return true;
 }
 
 function getMaxFor(r: Record<string, string>, fallback = 0): number {
