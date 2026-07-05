@@ -86,10 +86,13 @@ export default function StudentDetail() {
   const curriculum = get("Curriculium") || get("Curriculum");
   const defaultMax = curriculum.toUpperCase().includes('NEET') ? 720 : 300;
   const studentClassroom = get("Classroom Name") || get("Classroom");
+  const studentGrade = get("Grade");
 
   const testRows = useMemo(() => {
     if (!student || !data) return [] as { test: string; subjects: Record<string, number>; total: number; max: number; pct: number }[];
-    return data.testNames.map(test => {
+    return data.testNames
+      .filter(test => isTestRelevant(test, studentGrade, curriculum))
+      .map(test => {
       const r = student.results[test] ?? {};
       const total = getTotalFor(r);
       const max = getMaxFor(r, defaultMax) || defaultMax;
@@ -103,7 +106,7 @@ export default function StudentDetail() {
       const pct = isFinite(total) && max > 0 ? (total / max) * 100 : 0;
       return { test, subjects, total: isFinite(total) ? total : 0, max, pct };
     });
-  }, [student, data, defaultMax, curriculum]);
+  }, [student, data, defaultMax, curriculum, studentGrade]);
 
   // Stable subject column list = union of curriculum subjects appearing in any test
   const subjectColumns = useMemo(() => {
