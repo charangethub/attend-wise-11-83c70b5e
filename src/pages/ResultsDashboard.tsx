@@ -74,7 +74,7 @@ export default function ResultsDashboard() {
   const [search, setSearch] = usePersistentState<string>("results:search", "");
   const [classFilter, setClassFilter] = usePersistentState<string>("results:class", "all");
   const [currFilter, setCurrFilter] = usePersistentState<string>("results:curr", "all");
-  const [testFilter, setTestFilter] = usePersistentState<string>("results:test", "__latest__");
+  const [testFilter, setTestFilter] = usePersistentState<string>("results:test", "__all__");
 
   const students = data?.students ?? [];
   const testNames = data?.testNames ?? [];
@@ -82,20 +82,31 @@ export default function ResultsDashboard() {
   const classrooms = useMemo(() => Array.from(new Set(students.map(s => pickField(s.info, "Classroom Name", "Classroom")).filter(Boolean))).sort(), [students]);
   const curricula = useMemo(() => Array.from(new Set(students.map(s => pickField(s.info, "Curriculium", "Curriculum")).filter(Boolean))).sort(), [students]);
 
-  // Determine "latest" test = last test name with at least 1 student having score>0
-  const latestTest = useMemo(() => {
+  // Determine which tests belong to a curriculum stream.
+  // NEET students should never see JEE / Advance / EAPCET / Mains results, and vice-versa.
+  function isTestForCurriculum(t: string, curr: string): boolean {
+    if (!t) return false;
+    const isNeet = curr.toUpperCase().includes('NEET');
+    const isJee = curr.toUpperCase().includes('JEE');
+    if (isNeet && /JEE|EAPCET|MAIN|ADV/i.test(t)) return false;
+    if (isJee && /NEET/i.test(t)) return false;
+    return true;
+  }
+
+  // Per-student latest relevant test with a valid score
+  function pickStudentTest(s: typeof students[number]): string {
+    const curr = pickField(s.info, "Curriculium", "Curriculum");
+    if (testFilter !== "__all__") {
+      return isTestForCurriculum(testFilter, curr) ? testFilter : "";
+    }
     for (let i = testNames.length - 1; i >= 0; i--) {
       const t = testNames[i];
-      const has = students.some(s => {
-        const r = s.results[t] ?? {};
-        return getTotalFor(r) > 0;
-      });
-      if (has) return t;
+      if (!isTestForCurriculum(t, curr)) continue;
+      const r = s.results[t] ?? {};
+      if (getTotalFor(r) > 0) return t;
     }
-    return testNames[0] ?? "";
-  }, [students, testNames]);
-
-  const activeTest = testFilter === "__latest__" ? latestTest : testFilter;
+    return "";
+  }
 
   const filteredStudents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -127,10 +138,11 @@ export default function ResultsDashboard() {
     }
     const out: { key: string; classroom: string; curr: string; grade: string; test: string; avg: number; max: number; topper: { name: string; score: number; userId: string } | null; count: number }[] = [];
     for (const [key, g] of groups) {
-      // find latest test with a score in this classroom
+      // find latest test relevant to this classroom's curriculum with a valid score
       let latest = "";
       for (let i = testNames.length - 1; i >= 0; i--) {
         const t = testNames[i];
+        if (!isTestForCurriculum(t, g.curr)) continue;
         if ((g.students as any[]).some(s => getTotalFor(s.results[t] ?? {}) > 0)) { latest = t; break; }
       }
       if (!latest) continue;
@@ -166,42 +178,45 @@ export default function ResultsDashboard() {
     });
   }, [filteredStudents, testNames]);
 
-  // Overall topper across all students for active test
+  // Overall topper across filtered students (each student uses their own latest relevant test)
   const topPerformer = useMemo(() => {
-    if (!activeTest) return null;
     let best: { name: string; score: number; userId: string } | null = null;
     for (const s of filteredStudents) {
-      const r = s.results[activeTest] ?? {};
+      const t = pickStudentTest(s);
+      if (!t) continue;
+      const r = s.results[t] ?? {};
       const score = getTotalFor(r);
-      if (!isFinite(score)) continue;
+      if (!isFinite(score) || score <= 0) continue;
       const name = pickField(s.info, "Student Name", "Name");
       const userId = pickField(s.info, "User ID", "user_id_vedantu");
       if (!best || score > best.score) best = { name, score, userId };
     }
     return best;
-  }, [filteredStudents, activeTest]);
+  }, [filteredStudents, testNames, testFilter]);
 
-  // Class average (all students with valid score for activeTest)
+  // Class average across filtered students (per-student latest relevant test)
   const classAverage = useMemo(() => {
-    if (!activeTest) return { avg: 0, max: 0 };
     let sum = 0, sumMax = 0, n = 0;
     for (const s of filteredStudents) {
-      const r = s.results[activeTest] ?? {};
+      const t = pickStudentTest(s);
+      if (!t) continue;
+      const r = s.results[t] ?? {};
       const score = getTotalFor(r);
-      if (!isFinite(score)) continue;
+      if (!isFinite(score) || score <= 0) continue;
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       let max = getMaxFor(r);
       if (max <= 0) max = curr.toUpperCase().includes('NEET') ? 720 : 300;
       sum += score; sumMax += max; n++;
     }
     return { avg: n ? sum / n : 0, max: n ? sumMax / n : 0 };
-  }, [filteredStudents, activeTest]);
+  }, [filteredStudents, testNames, testFilter]);
 
   const exportCsv = () => {
-    const headers = ["#", "User ID", "Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment Status", "Score", "Max", "%", "Performance"];
+    const headers = ["#", "User ID", "Roll No", "Student Name", "Curriculum", "Grade", "Classroom", "Enrollment Status", "Test", "Score", "Max", "%", "Performance"];
     const lines = [headers.join(",")];
     filteredStudents.forEach((s, i) => {
-      const r = s.results[activeTest] ?? {};
+      const t = pickStudentTest(s);
+      const r = t ? (s.results[t] ?? {}) : {};
       const score = getTotalFor(r);
       const curr = pickField(s.info, "Curriculium", "Curriculum");
       let max = getMaxFor(r);
@@ -216,6 +231,7 @@ export default function ResultsDashboard() {
         pickField(s.info, "Grade"),
         pickField(s.info, "Classroom Name", "Classroom"),
         pickField(s.info, "Enrollment Status", "Status"),
+        t || '',
         isFinite(score) ? score : '',
         max || '',
         isFinite(score) ? pct.toFixed(1) + '%' : '',
@@ -226,7 +242,7 @@ export default function ResultsDashboard() {
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `Results_${activeTest || 'all'}.csv`; a.click();
+    a.href = url; a.download = `Results_${testFilter === '__all__' ? 'latest-per-batch' : testFilter}.csv`; a.click();
     URL.revokeObjectURL(url);
   };
 
@@ -307,7 +323,7 @@ export default function ResultsDashboard() {
               <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>{testNames.length}</div>
             </CardContent></Card>
             <Card><CardContent className="p-4">
-              <div className="text-xs text-muted-foreground uppercase">Class Avg ({activeTest || '—'})</div>
+              <div className="text-xs text-muted-foreground uppercase">Class Avg {testFilter === '__all__' ? '(latest per batch)' : `(${testFilter})`}</div>
               <div className="text-2xl font-bold mt-1" style={{ color: RESULTS_COLOR }}>
                 {classAverage.avg.toFixed(1)}
                 <span className="text-sm text-muted-foreground font-normal"> / {classAverage.max.toFixed(0)}</span>
@@ -384,7 +400,7 @@ export default function ResultsDashboard() {
             <Select value={testFilter} onValueChange={setTestFilter}>
               <SelectTrigger className="w-44"><SelectValue placeholder="Test" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__latest__">Latest Test ({latestTest || '—'})</SelectItem>
+                <SelectItem value="__all__">All (Latest per Batch)</SelectItem>
                 {testNames.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -402,6 +418,7 @@ export default function ResultsDashboard() {
                   <th className="px-2 py-2 text-left">Stream</th>
                   <th className="px-2 py-2 text-left">Grade</th>
                   <th className="px-2 py-2 text-left">Classroom</th>
+                  <th className="px-2 py-2 text-left">Test</th>
                   <th className="px-2 py-2 text-center">Score</th>
                   <th className="px-2 py-2 text-center">Max</th>
                   <th className="px-2 py-2 text-center">%</th>
@@ -410,7 +427,8 @@ export default function ResultsDashboard() {
               </thead>
               <tbody>
                 {filteredStudents.map((s, i) => {
-                  const r = s.results[activeTest] ?? {};
+                  const t = pickStudentTest(s);
+                  const r = t ? (s.results[t] ?? {}) : {};
                   const score = getTotalFor(r);
                   const curr = pickField(s.info, "Curriculium", "Curriculum");
                   let max = getMaxFor(r);
@@ -442,6 +460,7 @@ export default function ResultsDashboard() {
                       </td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Grade")}</td>
                       <td className="px-2 py-1.5">{pickField(s.info, "Classroom Name", "Classroom")}</td>
+                      <td className="px-2 py-1.5 text-[10px] text-muted-foreground">{t || '—'}</td>
                       <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) && score > 0 ? score : <span className="text-muted-foreground text-[10px]">No score</span>}</td>
                       <td className="px-2 py-1.5 text-center">{isFinite(max) && max > 0 ? max : '—'}</td>
                       <td className="px-2 py-1.5 text-center font-bold">{isFinite(score) && score > 0 ? `${pct.toFixed(1)}%` : '—'}</td>
@@ -452,7 +471,7 @@ export default function ResultsDashboard() {
                   );
                 })}
                 {filteredStudents.length === 0 && (
-                  <tr><td colSpan={12} className="text-center py-8 text-muted-foreground">No students match filters.</td></tr>
+                  <tr><td colSpan={13} className="text-center py-8 text-muted-foreground">No students match filters.</td></tr>
                 )}
               </tbody>
             </table>
