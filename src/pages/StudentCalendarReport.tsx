@@ -36,6 +36,7 @@ const StudentCalendarReport = () => {
   const [year, setYear] = useState(currentYear);
   const [students, setStudents] = useState<any[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
+  const [overallAttendance, setOverallAttendance] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [classroomFilter, setClassroomFilter] = useState("all");
@@ -46,6 +47,7 @@ const StudentCalendarReport = () => {
   const currentDate = new Date(year, month);
   const monthStart = format(startOfMonth(currentDate), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(currentDate), "yyyy-MM-dd");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
 
   const fetchData = useCallback(async () => {
     if (!activeSlug) return;
@@ -78,6 +80,22 @@ const StudentCalendarReport = () => {
     toDate: monthEnd,
     debounceMs: 500,
   });
+
+  // Load a student's ENTIRE attendance history (from beginning until today)
+  // once the user picks them, so we can compute the overall attendance %.
+  useEffect(() => {
+    if (!selectedStudentId) { setOverallAttendance([]); return; }
+    let cancelled = false;
+    (async () => {
+      const rows = await fetchAttendanceForStudents<any>({
+        columns: "student_id, date, status, session",
+        studentIds: [selectedStudentId],
+        toDate: todayStr,
+      });
+      if (!cancelled) setOverallAttendance(rows);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedStudentId, todayStr]);
 
   const classrooms = useMemo(() => Array.from(new Set(students.map((s) => s.classroom_name).filter(Boolean))).sort(), [students]);
 
@@ -130,6 +148,34 @@ const StudentCalendarReport = () => {
     return { p, ab, l, h, half, total: p + ab + l + h + half };
   }, [studentAttMap]);
 
+  // Monthly attendance %: Present ÷ (Present + Absent + Half) within the visible month
+  const monthlyPct = useMemo(() => {
+    const denom = summary.p + summary.ab + summary.half;
+    return denom ? Math.round(((summary.p + summary.half * 0.5) / denom) * 1000) / 10 : 0;
+  }, [summary]);
+
+  // Overall attendance %: from the student's earliest record through today
+  const overallPct = useMemo(() => {
+    if (!overallAttendance.length) return 0;
+    const byDate: Record<string, { AM?: string; PM?: string }> = {};
+    overallAttendance.forEach((a: any) => {
+      const sess = a.session || "AM";
+      if (!byDate[a.date]) byDate[a.date] = {};
+      if (sess === "AM") byDate[a.date].AM = a.status;
+      else byDate[a.date].PM = a.status;
+    });
+    let p = 0, ab = 0, half = 0;
+    Object.values(byDate).forEach((d) => {
+      const combined = getCombinedStatus(d.AM, d.PM);
+      if (combined === "P") p++;
+      else if (combined === "AB") ab++;
+      else if (combined === "L" || combined === "H" || !combined) return;
+      else half++;
+    });
+    const denom = p + ab + half;
+    return denom ? Math.round(((p + half * 0.5) / denom) * 1000) / 10 : 0;
+  }, [overallAttendance]);
+
   const prevMonth = () => { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 11) { setMonth(0); setYear(y => y + 1); } else setMonth(m => m + 1); };
 
@@ -176,8 +222,23 @@ const StudentCalendarReport = () => {
         <>
           {/* Student info */}
           <div className="mb-4 rounded-lg border border-border bg-card p-4">
-            <h3 className="text-lg font-bold text-foreground">{selectedStudent.student_name}</h3>
-            <p className="text-sm text-muted-foreground">{selectedStudent.classroom_name} · {selectedStudent.grade} · {selectedStudent.enrollment_status}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">{selectedStudent.student_name}</h3>
+                <p className="text-sm text-muted-foreground">{selectedStudent.classroom_name} · {selectedStudent.grade} · {selectedStudent.enrollment_status}</p>
+              </div>
+              <div className="flex gap-3">
+                <div className="rounded-lg border border-border bg-primary/5 px-4 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Monthly %</p>
+                  <p className="text-xl font-bold text-primary">{monthlyPct}%</p>
+                </div>
+                <div className="rounded-lg border border-border bg-success/5 px-4 py-2 text-center">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Overall %</p>
+                  <p className="text-xl font-bold text-success">{overallPct}%</p>
+                  <p className="text-[9px] text-muted-foreground">from start · till today</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Month nav */}
