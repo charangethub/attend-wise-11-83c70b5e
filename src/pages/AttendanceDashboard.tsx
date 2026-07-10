@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare, Upload, Download } from "lucide-react";
+import { Save, RefreshCw, Search, CheckCircle, XCircle, Trash2, LayoutGrid, List, ArrowLeft, CalendarDays, MessageSquare, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { usePageDataset } from "@/hooks/usePageDataset";
 import { logActivity, logActivityBatch } from "@/hooks/useActivityLog";
@@ -422,14 +422,9 @@ const AttendanceDashboard = () => {
             <Trash2 className="h-4 w-4" /> Clear All
           </Button>
           {canUploadCsv && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
-                <Upload className="h-4 w-4" /> Upload CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={downloadAttendanceTemplate} className="gap-1.5">
-                <Download className="h-4 w-4" /> Download Template
-              </Button>
-            </>
+            <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5">
+              <Upload className="h-4 w-4" /> Upload CSV
+            </Button>
           )}
           <Button variant="outline" size="sm" onClick={handleSync} disabled={syncing} className="gap-1.5">
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} /> Sync Sheet
@@ -674,6 +669,7 @@ const AttendanceDashboard = () => {
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
         description={`Bulk import attendance. Date accepts DD-MM-YYYY or YYYY-MM-DD; defaults to ${selectedDate} if blank.`}
+        templateLabel="Download Template Format"
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}

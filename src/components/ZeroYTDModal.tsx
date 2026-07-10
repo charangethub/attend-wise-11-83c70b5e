@@ -7,8 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
-import { Eye } from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import CallHistoryDialog from "./CallHistoryDialog";
+import { fetchAttendanceForStudents } from "@/lib/attendanceData";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 
 interface ZeroYTDStudent {
   id: string;
@@ -32,13 +34,16 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
   const [classroomFilter, setClassroomFilter] = useState("all");
   const [rangeMode, setRangeMode] = useState<"weekly" | "monthly" | "all">("weekly");
   const today = format(new Date(), "yyyy-MM-dd");
-  const [fromDate, setFromDate] = useState<string>(format(subDays(new Date(), 6), "yyyy-MM-dd"));
+  const defaultWeeklyFrom = format(subDays(new Date(), 6), "yyyy-MM-dd");
+  const [fromDate, setFromDate] = useState<string>(defaultWeeklyFrom);
   const [toDate, setToDate] = useState<string>(today);
   const [computedIds, setComputedIds] = useState<string[] | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [lastPresentMap, setLastPresentMap] = useState<Record<string, string>>({});
   const [callLogsMap, setCallLogsMap] = useState<Record<string, any>>({});
   const [historyStudent, setHistoryStudent] = useState<ZeroYTDStudent | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [zeroLoading, setZeroLoading] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
 
   // Update date range whenever the mode toggles
   useEffect(() => {
@@ -60,35 +65,66 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     [allStudents],
   );
 
+  const usingDefaultWeekly =
+    rangeMode === "weekly" &&
+    fromDate === defaultWeeklyFrom &&
+    toDate === today;
+
+  useAttendanceAutoRefresh({
+    enabled: open,
+    channelKey: `zero-ytd:${rangeMode}:${fromDate || "start"}:${toDate || today}`,
+    onRefresh: () => setRefreshTick((tick) => tick + 1),
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    debounceMs: 500,
+  });
+
   // Recompute the zero-attendance list from the DB whenever the range changes.
-  // For the initial weekly view we use the pre-computed studentIds prop for speed.
+  // The default weekly view can reuse the dashboard's already-fetched weekly ids.
   useEffect(() => {
     if (!open) return;
-    const isDefaultWeekly =
-      rangeMode === "weekly" &&
-      fromDate === format(subDays(new Date(), 6), "yyyy-MM-dd") &&
-      toDate === today;
-    if (isDefaultWeekly) { setComputedIds(null); return; }
+
+    if (usingDefaultWeekly) {
+      setComputedIds(null);
+      setZeroLoading(false);
+      return;
+    }
+
+    let cancelled = false;
 
     const run = async () => {
       const ids = enrolledStudents.map((s) => s.id);
-      if (!ids.length) { setComputedIds([]); return; }
-      const present = new Set<string>();
-      // chunk to avoid oversized IN() lists
-      for (let i = 0; i < ids.length; i += 200) {
-        const chunk = ids.slice(i, i + 200);
-        let q = supabase.from("attendance").select("student_id").in("student_id", chunk).eq("status", "P");
-        if (fromDate) q = q.gte("date", fromDate);
-        if (toDate) q = q.lte("date", toDate);
-        const { data } = await q;
-        (data as any[])?.forEach((r) => present.add(r.student_id));
+      setZeroLoading(true);
+      if (!ids.length) {
+        setComputedIds([]);
+        setZeroLoading(false);
+        return;
       }
-      setComputedIds(ids.filter((id) => !present.has(id)));
+
+      try {
+        const presentRows = await fetchAttendanceForStudents<{ student_id: string }>({
+          columns: "student_id",
+          studentIds: ids,
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined,
+          statuses: ["P"],
+        });
+
+        if (cancelled) return;
+        const present = new Set(presentRows.map((row) => row.student_id));
+        setComputedIds(ids.filter((id) => !present.has(id)));
+      } finally {
+        if (!cancelled) setZeroLoading(false);
+      }
     };
     void run();
-  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today]);
+    return () => { cancelled = true; };
+  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today, defaultWeeklyFrom, usingDefaultWeekly, refreshTick]);
 
-  const activeIds = computedIds ?? studentIds;
+  const activeIds = useMemo(
+    () => usingDefaultWeekly ? studentIds : computedIds ?? [],
+    [usingDefaultWeekly, studentIds, computedIds],
+  );
 
   const zeroStudents = useMemo(() => {
     const idSet = new Set(activeIds);
@@ -111,61 +147,101 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     [zeroStudents],
   );
 
+  useEffect(() => {
+    if (classroomFilter !== "all" && !classrooms.includes(classroomFilter)) setClassroomFilter("all");
+  }, [classroomFilter, classrooms]);
+
   const filtered = useMemo(
     () => classroomFilter === "all" ? zeroStudents : zeroStudents.filter((s) => s.classroom_name === classroomFilter),
     [zeroStudents, classroomFilter],
   );
 
+  const periodLabel = useMemo(() => {
+    if (rangeMode === "all") return `All-time until ${toDate || today}`;
+    return `${rangeMode === "weekly" ? "Weekly" : "Monthly"}: ${fromDate || "start"} to ${toDate || today}`;
+  }, [rangeMode, fromDate, toDate, today]);
+
+  const csvCell = (value: string | number | null | undefined) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+  const downloadSelectedPeriod = () => {
+    const headers = ["Student Name", "Roll No", "Classroom", "Reason", "Last Present", "Expected Return", "Period"];
+    const rows = filtered.map((s) => [
+      s.student_name,
+      s.roll_no,
+      s.classroom_name,
+      s.absenceReason || "",
+      s.lastPresent || "Never",
+      s.expectedReturn || "Not Set",
+      periodLabel,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `zero-attendance-${rangeMode}-${fromDate || "start"}-to-${toDate || today}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   useEffect(() => {
-    if (!open || activeIds.length === 0) return;
+    if (!open) return;
+    if (activeIds.length === 0) {
+      setLastPresentMap({});
+      setCallLogsMap({});
+      return;
+    }
+
+    let cancelled = false;
 
     const fetchDetails = async () => {
-      setLoading(true);
+      setDetailsLoading(true);
       try {
         const chunks: string[][] = [];
         for (let i = 0; i < activeIds.length; i += 50) chunks.push(activeIds.slice(i, i + 50));
 
         const lpMap: Record<string, string> = {};
-        await Promise.all(
-          chunks.map(async (chunk) => {
-            const { data } = await supabase
-              .from("attendance")
-              .select("student_id, date")
-              .in("student_id", chunk)
-              .eq("status", "P")
-              .order("date", { ascending: false })
-              .limit(chunk.length);
-
-            data?.forEach((row: any) => {
-              if (!lpMap[row.student_id]) lpMap[row.student_id] = row.date;
-            });
-          }),
-        );
-        setLastPresentMap(lpMap);
+        const lastPresentRows = await fetchAttendanceForStudents<{ student_id: string; date: string }>({
+          columns: "student_id, date",
+          studentIds: activeIds,
+          toDate: toDate || undefined,
+          statuses: ["P"],
+        });
+        lastPresentRows.forEach((row) => {
+          if (!lpMap[row.student_id] || row.date > lpMap[row.student_id]) lpMap[row.student_id] = row.date;
+        });
+        if (!cancelled) setLastPresentMap(lpMap);
 
         const clMap: Record<string, any> = {};
         await Promise.all(
           chunks.map(async (chunk) => {
-            const { data } = await supabase
-              .from("call_logs" as any)
-              .select("student_id, absence_reason, expected_return_date, absent_date")
-              .in("student_id", chunk)
-              .order("absent_date", { ascending: false })
-              .limit(chunk.length * 2);
+            let from = 0;
+            while (true) {
+              const { data, error } = await supabase
+                .from("call_logs" as any)
+                .select("student_id, absence_reason, expected_return_date, absent_date")
+                .in("student_id", chunk)
+                .order("absent_date", { ascending: false })
+                .range(from, from + 999);
 
-            (data as any[])?.forEach((row: any) => {
-              if (!clMap[row.student_id]) clMap[row.student_id] = row;
-            });
+              if (error) throw error;
+              (data as any[])?.forEach((row: any) => {
+                if (!clMap[row.student_id]) clMap[row.student_id] = row;
+              });
+              if (!data || data.length < 1000) break;
+              from += 1000;
+            }
           }),
         );
-        setCallLogsMap(clMap);
+        if (!cancelled) setCallLogsMap(clMap);
       } finally {
-        setLoading(false);
+        if (!cancelled) setDetailsLoading(false);
       }
     };
 
     void fetchDetails();
-  }, [open, activeIds]);
+    return () => { cancelled = true; };
+  }, [open, activeIds, toDate, refreshTick]);
 
   return (
     <>
@@ -174,10 +250,10 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
           <SheetHeader className="mb-4">
             <SheetTitle className="flex items-center gap-2">
               Zero YTD Students
-              <Badge variant="destructive">{activeIds.length}</Badge>
+              <Badge variant="destructive">{zeroLoading ? "…" : activeIds.length}</Badge>
             </SheetTitle>
             <SheetDescription>
-              Students with zero attendance in the selected period.
+              Students with zero present attendance in the selected period. {periodLabel}
             </SheetDescription>
           </SheetHeader>
 
@@ -224,9 +300,15 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
                 onChange={(e) => setToDate(e.target.value)}
               />
             </div>
+            <div className="md:col-span-2 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Showing {zeroLoading ? "updating" : filtered.length} students for {periodLabel}</p>
+              <Button variant="outline" size="sm" onClick={downloadSelectedPeriod} disabled={zeroLoading || filtered.length === 0} className="gap-1.5">
+                <Download className="h-3.5 w-3.5" /> Download CSV
+              </Button>
+            </div>
           </div>
 
-          {loading ? (
+          {zeroLoading || detailsLoading ? (
             <div className="flex justify-center py-12">
               <div className="h-6 w-6 animate-spin rounded-full border-4 border-primary border-t-transparent" />
             </div>

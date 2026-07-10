@@ -234,10 +234,7 @@ const AttendanceRecords = () => {
         <div><h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Attendance Records</h1><p className="text-sm text-muted-foreground">{months[month]} {year} • {filteredStudents.length} students</p></div>
         <div className="flex gap-2">
           {canUploadCsv && (
-            <>
-              <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>
-              <Button variant="outline" size="sm" onClick={downloadAttendanceTemplate} className="gap-1.5"><Download className="h-4 w-4" /> Download Template</Button>
-            </>
+            <Button variant="outline" size="sm" onClick={() => setCsvUploadOpen(true)} className="gap-1.5"><Upload className="h-4 w-4" /> Upload CSV</Button>
           )}
           <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5"><Download className="h-4 w-4" /> Export CSV</Button>
         </div>
@@ -319,6 +316,7 @@ const AttendanceRecords = () => {
         onOpenChange={setCsvUploadOpen}
         title="Upload Attendance CSV"
         description="Upload a CSV to bulk import attendance records. Date accepts DD-MM-YYYY or YYYY-MM-DD; if missing, today's date is used."
+        templateLabel="Download Template Format"
         onDownloadTemplate={downloadAttendanceTemplate}
         onUpload={handleAttendanceCsvUpload}
         uploading={csvUploading}
