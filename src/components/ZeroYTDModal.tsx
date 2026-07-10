@@ -10,6 +10,7 @@ import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 import { Download, Eye } from "lucide-react";
 import CallHistoryDialog from "./CallHistoryDialog";
 import { fetchAttendanceForStudents } from "@/lib/attendanceData";
+import { useAttendanceAutoRefresh } from "@/hooks/useAttendanceAutoRefresh";
 
 interface ZeroYTDStudent {
   id: string;
@@ -37,6 +38,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
   const [fromDate, setFromDate] = useState<string>(defaultWeeklyFrom);
   const [toDate, setToDate] = useState<string>(today);
   const [computedIds, setComputedIds] = useState<string[] | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [lastPresentMap, setLastPresentMap] = useState<Record<string, string>>({});
   const [callLogsMap, setCallLogsMap] = useState<Record<string, any>>({});
   const [historyStudent, setHistoryStudent] = useState<ZeroYTDStudent | null>(null);
@@ -67,6 +69,15 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     rangeMode === "weekly" &&
     fromDate === defaultWeeklyFrom &&
     toDate === today;
+
+  useAttendanceAutoRefresh({
+    enabled: open,
+    channelKey: `zero-ytd:${rangeMode}:${fromDate || "start"}:${toDate || today}`,
+    onRefresh: () => setRefreshTick((tick) => tick + 1),
+    fromDate: fromDate || undefined,
+    toDate: toDate || undefined,
+    debounceMs: 500,
+  });
 
   // Recompute the zero-attendance list from the DB whenever the range changes.
   // The default weekly view can reuse the dashboard's already-fetched weekly ids.
@@ -108,7 +119,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     };
     void run();
     return () => { cancelled = true; };
-  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today, defaultWeeklyFrom, usingDefaultWeekly]);
+  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today, defaultWeeklyFrom, usingDefaultWeekly, refreshTick]);
 
   const activeIds = useMemo(
     () => usingDefaultWeekly ? studentIds : computedIds ?? [],
@@ -230,7 +241,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
 
     void fetchDetails();
     return () => { cancelled = true; };
-  }, [open, activeIds, toDate]);
+  }, [open, activeIds, toDate, refreshTick]);
 
   return (
     <>
