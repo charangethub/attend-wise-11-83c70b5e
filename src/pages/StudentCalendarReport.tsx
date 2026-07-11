@@ -140,15 +140,15 @@ const StudentCalendarReport = () => {
     Object.values(studentAttMap).forEach((d) => {
       const combined = getCombinedStatus(d.AM, d.PM);
       if (combined === "P") p++;
-      else if (combined === "AB") ab++;
+      else if (combined === "A" || combined === "AB") ab++;
       else if (combined === "L") l++;
       else if (combined === "H") h++;
-      else half++;
+      else if (combined) half++;
     });
     return { p, ab, l, h, half, total: p + ab + l + h + half };
   }, [studentAttMap]);
 
-  // Monthly attendance %: Present ÷ (Present + Absent + Half) within the visible month
+  // Monthly attendance %: Present ÷ (Present + Absent + Half). Holidays (H) & Leave (L) excluded.
   const monthlyPct = useMemo(() => {
     const denom = summary.p + summary.ab + summary.half;
     return denom ? Math.round(((summary.p + summary.half * 0.5) / denom) * 1000) / 10 : 0;
@@ -168,7 +168,7 @@ const StudentCalendarReport = () => {
     Object.values(byDate).forEach((d) => {
       const combined = getCombinedStatus(d.AM, d.PM);
       if (combined === "P") p++;
-      else if (combined === "AB") ab++;
+      else if (combined === "A" || combined === "AB") ab++;
       else if (combined === "L" || combined === "H" || !combined) return;
       else half++;
     });
