@@ -105,11 +105,12 @@ const DashboardAnalytics = () => {
   const totalStudents = students.length;
   const enrolledCount = students.filter((s: any) => s.enrollment_status === "ENROLLED").length;
   const forfeitedCount = students.filter((s: any) => s.enrollment_status === "FORFEITED").length;
-  const presentCount = students.filter((s: any) => attMap[s.id] === "P").length;
-  const absentCount = students.filter((s: any) => attMap[s.id] === "A").length;
-  const leaveCount = students.filter((s: any) => attMap[s.id] === "L").length;
-  const halfDayCount = students.filter((s: any) => attMap[s.id] && !["P", "A", "L", "H", ""].includes(attMap[s.id])).length;
-  const unmarkedCount = totalStudents - presentCount - absentCount - leaveCount - halfDayCount;
+  const enrolledStudents = students.filter((s: any) => s.enrollment_status === "ENROLLED");
+  const presentCount = enrolledStudents.filter((s: any) => attMap[s.id] === "P").length;
+  const absentCount = enrolledStudents.filter((s: any) => attMap[s.id] === "A").length;
+  const leaveCount = enrolledStudents.filter((s: any) => attMap[s.id] === "L").length;
+  const halfDayCount = enrolledStudents.filter((s: any) => attMap[s.id] && !["P", "A", "L", "H", ""].includes(attMap[s.id])).length;
+  const unmarkedCount = Math.max(0, enrolledCount - presentCount - absentCount - leaveCount - halfDayCount);
   const presentPct = enrolledCount ? Math.round((presentCount / enrolledCount) * 100) : 0;
   const absentPct = enrolledCount ? Math.round((absentCount / enrolledCount) * 100) : 0;
   const leavePct = enrolledCount ? Math.round((leaveCount / enrolledCount) * 100) : 0;
