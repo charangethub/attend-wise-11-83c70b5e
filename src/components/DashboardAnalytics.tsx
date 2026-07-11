@@ -15,6 +15,7 @@ const DashboardAnalytics = () => {
   const [attendance, setAttendance] = useState<any[]>([]);
   const [zeroYTDOpen, setZeroYTDOpen] = useState(false);
   const [allAttendance, setAllAttendance] = useState<any[]>([]);
+  const [allTimePresentIds, setAllTimePresentIds] = useState<Set<string>>(new Set());
   const [students, setStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const today = format(new Date(), "yyyy-MM-dd");
@@ -27,13 +28,15 @@ const DashboardAnalytics = () => {
     try {
       const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, roll_no, student_name, classroom_name, enrollment_status, center");
       const studentIds = studentRows.map((student: any) => student.id);
-      const [todayAttendance, weekAttendance] = await Promise.all([
+      const [todayAttendance, weekAttendance, allTimePresent] = await Promise.all([
         fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, exactDate: today }),
         fetchAttendanceForStudents<any>({ columns: "student_id, status, session, date", studentIds, fromDate: weekAgo, toDate: today }),
+        fetchAttendanceForStudents<any>({ columns: "student_id", studentIds, toDate: today, statuses: ["P"] }),
       ]);
       setStudents(studentRows);
       setAttendance(todayAttendance);
       setAllAttendance(weekAttendance);
+      setAllTimePresentIds(new Set((allTimePresent as any[]).map((r) => r.student_id)));
     } finally {
       setLoading(false);
     }
@@ -67,9 +70,8 @@ const DashboardAnalytics = () => {
 
   const zeroYTDStudentIds = useMemo(() => {
     const enrolledIds = new Set(students.filter((s: any) => s.enrollment_status === "ENROLLED").map((s: any) => s.id));
-    const studentsWithAttendance = new Set(allAttendance.filter((a: any) => a.status === "P").map((a: any) => a.student_id));
-    return [...enrolledIds].filter(id => !studentsWithAttendance.has(id));
-  }, [students, allAttendance]);
+    return [...enrolledIds].filter((id) => !allTimePresentIds.has(id));
+  }, [students, allTimePresentIds]);
 
   const zeroYTDCount = zeroYTDStudentIds.length;
 
@@ -108,9 +110,9 @@ const DashboardAnalytics = () => {
   const leaveCount = students.filter((s: any) => attMap[s.id] === "L").length;
   const halfDayCount = students.filter((s: any) => attMap[s.id] && !["P", "A", "L", "H", ""].includes(attMap[s.id])).length;
   const unmarkedCount = totalStudents - presentCount - absentCount - leaveCount - halfDayCount;
-  const presentPct = totalStudents ? Math.round((presentCount / totalStudents) * 100) : 0;
-  const absentPct = totalStudents ? Math.round((absentCount / totalStudents) * 100) : 0;
-  const leavePct = totalStudents ? Math.round((leaveCount / totalStudents) * 100) : 0;
+  const presentPct = enrolledCount ? Math.round((presentCount / enrolledCount) * 100) : 0;
+  const absentPct = enrolledCount ? Math.round((absentCount / enrolledCount) * 100) : 0;
+  const leavePct = enrolledCount ? Math.round((leaveCount / enrolledCount) * 100) : 0;
 
   const pieData = [
     { name: "Present", value: presentCount, color: COLORS.P },
@@ -151,7 +153,7 @@ const DashboardAnalytics = () => {
   ];
 
   const insightCards = [
-    { label: "Zero YTD Students", value: zeroYTDCount, subtitle: "Students with zero attendance", icon: AlertCircle, color: "text-destructive" },
+    { label: "Zero YTD Students", value: zeroYTDCount, subtitle: "All-time zero attendance", icon: AlertCircle, color: "text-destructive" },
     { label: "Avg Attendance %", value: `${avgAttendancePct}%`, subtitle: "Scheduled vs Attended", icon: BarChart3, color: "text-primary" },
     { label: "Avg WAU", value: `${avgWAU}%`, subtitle: "Weekly Active Users", icon: UsersRound, color: "text-success" },
   ];
