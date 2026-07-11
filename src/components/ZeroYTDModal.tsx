@@ -32,10 +32,10 @@ interface ZeroYTDModalProps {
 
 const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDModalProps) => {
   const [classroomFilter, setClassroomFilter] = useState("all");
-  const [rangeMode, setRangeMode] = useState<"weekly" | "monthly" | "all">("weekly");
+  const [rangeMode, setRangeMode] = useState<"weekly" | "monthly" | "all">("all");
   const today = format(new Date(), "yyyy-MM-dd");
   const defaultWeeklyFrom = format(subDays(new Date(), 6), "yyyy-MM-dd");
-  const [fromDate, setFromDate] = useState<string>(defaultWeeklyFrom);
+  const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>(today);
   const [computedIds, setComputedIds] = useState<string[] | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -65,10 +65,8 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     [allStudents],
   );
 
-  const usingDefaultWeekly =
-    rangeMode === "weekly" &&
-    fromDate === defaultWeeklyFrom &&
-    toDate === today;
+  const usingDefaultAll =
+    rangeMode === "all" && !fromDate && toDate === today;
 
   useAttendanceAutoRefresh({
     enabled: open,
@@ -84,7 +82,7 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
   useEffect(() => {
     if (!open) return;
 
-    if (usingDefaultWeekly) {
+    if (usingDefaultAll) {
       setComputedIds(null);
       setZeroLoading(false);
       return;
@@ -119,11 +117,11 @@ const ZeroYTDModal = ({ open, onOpenChange, studentIds, allStudents }: ZeroYTDMo
     };
     void run();
     return () => { cancelled = true; };
-  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today, defaultWeeklyFrom, usingDefaultWeekly, refreshTick]);
+  }, [open, rangeMode, fromDate, toDate, enrolledStudents, today, usingDefaultAll, refreshTick]);
 
   const activeIds = useMemo(
-    () => usingDefaultWeekly ? studentIds : computedIds ?? [],
-    [usingDefaultWeekly, studentIds, computedIds],
+    () => usingDefaultAll ? studentIds : computedIds ?? [],
+    [usingDefaultAll, studentIds, computedIds],
   );
 
   const zeroStudents = useMemo(() => {
