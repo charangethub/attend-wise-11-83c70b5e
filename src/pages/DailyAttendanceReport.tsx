@@ -285,7 +285,7 @@ const DailyAttendanceReport = () => {
       </div>
 
       {loading ? <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div> : (
-        <div className="mx-auto max-w-3xl bg-card shadow-lg print:shadow-none">
+        <div className="w-full bg-card shadow-lg print:shadow-none">
           <div className="border-2 border-foreground bg-primary/5 px-6 py-4 text-center">
             <h1 className="text-xl font-extrabold tracking-wide text-primary uppercase">Daily Attendance Report — Vedantu Learning Centre</h1>
             <p className="text-base font-bold text-destructive">{dynamicCenter}</p>
@@ -321,18 +321,18 @@ const DailyAttendanceReport = () => {
               }
             };
             return (
-              <table className="w-full border-collapse">
+              <table className="w-full border-collapse table-auto">
                 <thead><tr className="bg-primary/10">
-                  <th className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">Batch</th>
-                  {visibleCols.map(h => <th key={h} className="border-2 border-foreground px-4 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary">{h}</th>)}
+                  <th className="border-2 border-foreground px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-primary whitespace-nowrap">Batch</th>
+                  {visibleCols.map(h => <th key={h} className="border-2 border-foreground px-3 py-2.5 text-center text-xs font-bold uppercase tracking-wider text-primary whitespace-nowrap">{h}</th>)}
                 </tr></thead>
                 <tbody>{reportData.rows.length === 0 ? <tr><td colSpan={colSpan} className="border-2 border-foreground py-8 text-center text-muted-foreground">No data for this date</td></tr> : reportData.rows.map((row, i) => (
                   <tr key={row.batch} className={i % 2 === 0 ? "bg-card" : "bg-muted/30"}>
-                    <td className="border-2 border-foreground px-4 py-2 text-center text-sm font-semibold text-foreground">{row.batch}</td>
+                    <td className="border-2 border-foreground px-4 py-2 text-left text-sm font-semibold text-foreground whitespace-nowrap">{row.batch}</td>
                     {visibleCols.map(c => cellFor(c, row))}
                   </tr>))}</tbody>
                 {reportData.rows.length > 0 && <tfoot><tr className="bg-primary/10 font-bold">
-                  <td className="border-2 border-foreground px-4 py-2.5 text-center text-sm uppercase text-primary">Total</td>
+                  <td className="border-2 border-foreground px-4 py-2.5 text-left text-sm uppercase text-primary whitespace-nowrap">Total</td>
                   {visibleCols.map(c => totalCellFor(c))}
                 </tr></tfoot>}
               </table>
