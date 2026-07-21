@@ -26,7 +26,7 @@ const DailyAttendanceReport = () => {
     try { localStorage.setItem("dailyReport.selectedBatches", JSON.stringify(selectedBatches)); } catch {}
   }, [selectedBatches]);
   const [filterOpen, setFilterOpen] = useState(false);
-  const ALL_COLUMNS = ["Strength", "Present", "Absent (A)", "Half Day", "Holiday", "%"] as const;
+  const ALL_COLUMNS = ["Total Enrollment", "Forfeited", "Strength", "Present", "Absent (A)", "Half Day", "Holiday", "%"] as const;
   type ColKey = typeof ALL_COLUMNS[number];
   const [hiddenColumns, setHiddenColumns] = useState<ColKey[]>(() => {
     try {
@@ -47,10 +47,12 @@ const DailyAttendanceReport = () => {
     if (!activeSlug) return;
     setLoading(true);
     try {
-      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status, center", { onlyEnrolled: true });
+      const studentRows = await fetchDatasetStudents<any>(activeSlug, "id, classroom_name, enrollment_status, center");
       const attendanceRows = await fetchAttendanceForStudents<any>({
         columns: "student_id, status, session",
-        studentIds: studentRows.map((student: any) => student.id),
+        studentIds: studentRows
+          .filter((student: any) => student.enrollment_status === "ENROLLED")
+          .map((student: any) => student.id),
         exactDate: selectedDate,
       });
       const { data: permissionRows, error: permissionError } = await supabase
@@ -99,12 +101,16 @@ const DailyAttendanceReport = () => {
     });
 
     const permissionStudentIds = new Set(permissions.map((permission: any) => permission.student_id).filter(Boolean));
-    const classMap: Record<string, { strength: number; present: number; absent: number; half: number; holiday: number }> = {};
+    const classMap: Record<string, { total: number; forfeited: number; strength: number; present: number; absent: number; half: number; holiday: number }> = {};
     students.forEach((s) => {
       const name = s.classroom_name || "Unknown";
       if (selectedBatches.length > 0 && !selectedBatches.includes(name)) return;
 
-      if (!classMap[name]) classMap[name] = { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 };
+      if (!classMap[name]) classMap[name] = { total: 0, forfeited: 0, strength: 0, present: 0, absent: 0, half: 0, holiday: 0 };
+
+      classMap[name].total++;
+      if (s.enrollment_status === "FORFEITED") classMap[name].forfeited++;
+      if (s.enrollment_status !== "ENROLLED") return;
 
       // Strength always reflects enrolled students in the batch.
       classMap[name].strength++;
@@ -122,6 +128,8 @@ const DailyAttendanceReport = () => {
       const denom = Math.max(0, d.strength - d.holiday);
       return {
         batch: name,
+        total: d.total,
+        forfeited: d.forfeited,
         strength: d.strength,
         present: d.present,
         absent: d.absent,
@@ -130,7 +138,7 @@ const DailyAttendanceReport = () => {
         pct: denom > 0 ? (d.present / denom) * 100 : 0,
       };
     }).sort((a, b) => a.batch.localeCompare(b.batch));
-    const totals = rows.reduce((acc, r) => ({ strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half, holiday: acc.holiday + r.holiday }), { strength: 0, present: 0, absent: 0, half: 0, holiday: 0 });
+    const totals = rows.reduce((acc, r) => ({ total: acc.total + r.total, forfeited: acc.forfeited + r.forfeited, strength: acc.strength + r.strength, present: acc.present + r.present, absent: acc.absent + r.absent, half: acc.half + r.half, holiday: acc.holiday + r.holiday }), { total: 0, forfeited: 0, strength: 0, present: 0, absent: 0, half: 0, holiday: 0 });
     const totalDenom = Math.max(0, totals.strength - totals.holiday);
     return { rows, totals: { ...totals, pct: totalDenom > 0 ? (totals.present / totalDenom) * 100 : 0 } };
   }, [students, attendance, permissions, selectedBatches]);
@@ -289,6 +297,8 @@ const DailyAttendanceReport = () => {
             const cellCls = "border-2 border-foreground px-4 py-2 text-center";
             const cellFor = (c: ColKey, row: any) => {
               switch (c) {
+                case "Total Enrollment": return <td key={c} className={`${cellCls} text-foreground`}>{row.total}</td>;
+                case "Forfeited": return <td key={c} className={`${cellCls} font-semibold text-muted-foreground`}>{row.forfeited}</td>;
                 case "Strength": return <td key={c} className={`${cellCls} text-foreground`}>{row.strength}</td>;
                 case "Present": return <td key={c} className={`${cellCls} font-semibold text-success`}>{row.present}</td>;
                 case "Absent (A)": return <td key={c} className={`${cellCls} font-semibold text-destructive`}>{row.absent}</td>;
@@ -300,6 +310,8 @@ const DailyAttendanceReport = () => {
             const totalCellFor = (c: ColKey) => {
               const base = "border-2 border-foreground px-4 py-2.5 text-center";
               switch (c) {
+                case "Total Enrollment": return <td key={c} className={`${base} text-foreground`}>{reportData.totals.total}</td>;
+                case "Forfeited": return <td key={c} className={`${base} text-muted-foreground`}>{reportData.totals.forfeited}</td>;
                 case "Strength": return <td key={c} className={`${base} text-foreground`}>{reportData.totals.strength}</td>;
                 case "Present": return <td key={c} className={`${base} text-success`}>{reportData.totals.present}</td>;
                 case "Absent (A)": return <td key={c} className={`${base} text-destructive`}>{reportData.totals.absent}</td>;
